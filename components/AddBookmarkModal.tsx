@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import { X, Plus, Loader2 } from 'lucide-react';
-import { CATEGORIES, CategoryType } from '../types';
+import { CategoryType } from '../types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (title: string, url: string, category: string) => Promise<void>;
   isProcessing: boolean;
+  existingCategories?: string[];
 }
 
-export const AddBookmarkModal: React.FC<Props> = ({ isOpen, onClose, onAdd, isProcessing }) => {
+export const AddBookmarkModal: React.FC<Props> = ({ isOpen, onClose, onAdd, isProcessing, existingCategories = [] }) => {
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [category, setCategory] = useState<CategoryType>('Uncategorized');
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
 
   if (!isOpen) return null;
 
@@ -23,7 +25,22 @@ export const AddBookmarkModal: React.FC<Props> = ({ isOpen, onClose, onAdd, isPr
     setTitle('');
     setUrl('');
     setCategory('Uncategorized');
+    setIsCustomCategory(false);
   };
+
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    if (val === '___custom___') {
+        setIsCustomCategory(true);
+        setCategory('');
+    } else {
+        setIsCustomCategory(false);
+        setCategory(val);
+    }
+  };
+
+  // Filter Uncategorized to not show up twice or oddly in the list if passed in existingCategories
+  const displayCategories = ['Uncategorized', ...existingCategories.filter(c => c !== 'Uncategorized')];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
@@ -61,15 +78,36 @@ export const AddBookmarkModal: React.FC<Props> = ({ isOpen, onClose, onAdd, isPr
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as CategoryType)}
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
-            >
-              {CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
+            {!isCustomCategory ? (
+                <select
+                value={category}
+                onChange={handleCategoryChange}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
+                >
+                {displayCategories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                ))}
+                <option value="___custom___" className="font-semibold text-blue-600">+ Create new category...</option>
+                </select>
+            ) : (
+                <div className="flex gap-2">
+                    <input 
+                        type="text"
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        placeholder="Type new category name..."
+                        className="flex-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        autoFocus
+                    />
+                    <button 
+                        type="button" 
+                        onClick={() => { setIsCustomCategory(false); setCategory('Uncategorized'); }}
+                        className="px-3 py-2 text-gray-500 hover:text-gray-700 bg-gray-100 rounded-lg"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            )}
           </div>
 
           <div className="pt-2">

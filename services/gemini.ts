@@ -1,48 +1,291 @@
+import { getAISettings } from './storage';
 import { GoogleGenAI, Type } from "@google/genai";
-import { CATEGORIES } from "../types";
 
-// NOTE: In a production environment, this key should be handled securely on the backend.
-// For this client-side demo, we use the injected process.env.API_KEY.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const SYSTEM_PROMPT = `
+  You are an expert bookmark organizer. I have a list of bookmarks that need to be categorized.
+  
+  Tasks:
+  1. Analyze the Title and URL of each bookmark.
+  2. Group similar bookmarks together.
+  3. Assign a category name to each bookmark.
+  
+  CRITICAL RULES:
+  1. **The Category Name MUST be in RUSSIAN (Русский язык).** (e.g., "Разработка", "Новости", "Покупки", "Дизайн").
+  2. If a bookmark fits well into one of the existing categories provided in the context, use it.
+  3. If no existing category fits, create a NEW, concise (1-2 words) Russian category name.
+  4. Return ONLY a valid JSON array of objects. Each object must have "id" and "category".
+`;
 
-export const categorizeBookmarkWithAI = async (title: string, url: string): Promise<string> => {
-  try {
-    const prompt = `
-      Categorize the following bookmark based on its title and URL.
-      Bookmark Title: "${title}"
-      Bookmark URL: "${url}"
+const MAX_RETRIES = 5;
+
+// Helper to pause execution with abort support
+const delay = (ms: number, signal?: AbortSignal) => new Promise<void>(resolve => {
+    if (signal?.aborted) {
+        resolve();
+        return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        resolve();
+    });
+});
+
+export const organizeBookmarksBatch = async (
+  bookmarks: { id: string; title: string; url: string }[],
+  existingCategories: string[],
+  signal?: AbortSignal
+): Promise<{ id: string; category: string }[]> => {
+  if (bookmarks.length === 0) return [];
+
+  const settings = getAISettings();
+  const batchSize = settings.batchSize || 1;
+  const delayMs = settings.delayBetweenBatches || 5000;
+
+  const chunks = [];
+  for (let i = 0; i < bookmarks.length; i += batchSize) {
+    chunks.push(bookmarks.slice(i, i + batchSize));
+  }
+
+  console.log(`[v5] Starting AI organization: ${bookmarks.length} bookmarks. Batch Size: ${batchSize}. Delay: ${delayMs}ms.`);
+  
+  let allResults: { id: string; category: string }[] = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    // Check for abort before processing chunk
+    if (signal?.aborted) {
+        console.log("AI Organization stopped by user.");
+        break;
+    }
+
+    const chunk = chunks[i];
+    try {
+      console.log(`Processing chunk ${i + 1}/${chunks.length} (${chunk.length} items)...`);
+      // Use the retry wrapper with signal
+      const chunkResults = await processChunkWithRetry(chunk, existingCategories, 0, signal);
+      allResults = [...allResults, ...chunkResults];
       
-      You MUST strictly choose one category from this list: ${CATEGORIES.join(', ')}.
-      If it doesn't fit well, choose 'Other'.
-    `;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            category: {
-              type: Type.STRING,
-              description: "The best matching category from the provided list.",
-              enum: [...CATEGORIES]
-            }
-          },
-          required: ["category"]
-        }
+      // Delay between chunks to be polite to APIs and avoid rate limits
+      if (i < chunks.length - 1) {
+          if (signal?.aborted) break;
+          console.log(`Waiting ${delayMs}ms before next batch...`);
+          await delay(delayMs, signal);
       }
+    } catch (error: any) {
+      // If aborted, log info and break without error
+      if (signal?.aborted || error.message === 'Aborted by user' || error.name === 'AbortError') {
+          console.log("Processing stopped/aborted.");
+          break;
+      }
+
+      console.error(`Error processing chunk ${i + 1}:`, error);
+      
+      // Stop on Quota Exceeded to prevent log spam and API ban
+      const errMsg = error?.message || String(error);
+      if (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+          console.error("Aborting remaining chunks due to Rate Limit/Quota Exceeded.");
+          break;
+      }
+    }
+  }
+
+  return allResults;
+};
+
+// Wrapper to handle retries and fallback
+const processChunkWithRetry = async (
+    chunk: { id: string; title: string; url: string }[],
+    existingCategories: string[],
+    retryCount = 0,
+    signal?: AbortSignal
+): Promise<{ id: string; category: string }[]> => {
+    if (signal?.aborted) throw new Error("Aborted by user");
+
+    try {
+        return await processChunk(chunk, existingCategories, signal);
+    } catch (error: any) {
+        if (signal?.aborted || error.name === 'AbortError') throw new Error("Aborted by user");
+
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const isProviderError = errorMessage.includes('Provider') || errorMessage.includes('502') || errorMessage.includes('503');
+        const isRateLimit = errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('quota');
+
+        // FALLBACK LOGIC:
+        const settings = getAISettings();
+        if (settings.provider === 'openrouter' && (isProviderError || isRateLimit) && settings.geminiApiKey) {
+            console.warn("OpenRouter failed or rate limited. Attempting fallback to Direct Gemini API...");
+            try {
+                return await callDirectGemini(settings.geminiApiKey, 'gemini-2.0-flash', chunk, existingCategories);
+            } catch (fallbackError) {
+                console.error("Fallback to Gemini also failed:", fallbackError);
+            }
+        }
+
+        // RETRY LOGIC:
+        if (retryCount < MAX_RETRIES) {
+            let waitTime = 1000 * Math.pow(2, retryCount); // 1s, 2s, 4s...
+            
+            if (isRateLimit) {
+                // Wait much longer for rate limits
+                waitTime = 10000 + (retryCount * 5000); 
+                console.warn(`Rate limit hit (429). Cooling down for ${waitTime}ms before retry ${retryCount + 1}...`);
+            } else {
+                console.warn(`Chunk failed. Retrying in ${waitTime}ms... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
+            }
+            
+            // Pass signal to delay to allow interruption
+            await delay(waitTime, signal);
+            return processChunkWithRetry(chunk, existingCategories, retryCount + 1, signal);
+        }
+
+        throw error;
+    }
+};
+
+// Direct Gemini Call (Used for Fallback)
+const callDirectGemini = async (
+    apiKey: string, 
+    model: string, 
+    bookmarksChunk: any[], 
+    existingCategories: string[]
+): Promise<any[]> => {
+    const ai = new GoogleGenAI({ apiKey });
+    const userPrompt = generateUserPrompt(bookmarksChunk, existingCategories);
+    
+    const response = await ai.models.generateContent({
+        model: model,
+        contents: userPrompt,
+        config: {
+            systemInstruction: SYSTEM_PROMPT,
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        id: { type: Type.STRING },
+                        category: { type: Type.STRING }
+                    },
+                    required: ["id", "category"]
+                }
+            }
+        },
     });
 
-    const text = response.text;
-    if (!text) return 'Uncategorized';
+    return parseResponse(response.text || '');
+};
 
-    const result = JSON.parse(text);
-    return result.category || 'Other';
+const generateUserPrompt = (chunk: any[], existingCategories: string[]) => {
+    const validExisting = existingCategories.filter(c => c !== 'Uncategorized' && c !== 'Other');
+    const existingCatsStr = validExisting.length > 0 ? `Existing categories to consider: [${validExisting.join(', ')}]` : '';
+    
+    return `
+      ${existingCatsStr}
+      
+      Bookmarks to organize:
+      ${JSON.stringify(chunk)}
+    `;
+};
 
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    return 'Uncategorized';
-  }
+const parseResponse = (jsonStr: string): any[] => {
+    if (!jsonStr) return [];
+    
+    let cleanJson = jsonStr.trim();
+    if (cleanJson.startsWith('```json')) {
+        cleanJson = cleanJson.replace(/^```json/, '').replace(/```$/, '');
+    } else if (cleanJson.startsWith('```')) {
+        cleanJson = cleanJson.replace(/^```/, '').replace(/```$/, '');
+    }
+
+    try {
+        const result = JSON.parse(cleanJson);
+        const arrayResult = Array.isArray(result) ? result : (result.items || []);
+        console.log(`Parsed ${arrayResult.length} items successfully.`);
+        return arrayResult;
+    } catch (parseError) {
+        console.error("JSON Parse Error:", parseError);
+        return [];
+    }
+};
+
+const processChunk = async (
+  bookmarksChunk: { id: string; title: string; url: string }[],
+  existingCategories: string[],
+  signal?: AbortSignal
+): Promise<{ id: string; category: string }[]> => {
+    const settings = getAISettings();
+    const { provider } = settings;
+    const userPrompt = generateUserPrompt(bookmarksChunk, existingCategories);
+
+    let jsonStr = '';
+
+    // --- GEMINI PROVIDER ---
+    if (provider === 'gemini') {
+        const apiKey = settings.geminiApiKey;
+        if (!apiKey) throw new Error("Google Gemini API Key is missing. Please add it in Settings.");
+        
+        const ai = new GoogleGenAI({ apiKey });
+        
+        // Note: GoogleGenAI SDK doesn't support AbortSignal directly in this version
+        // We check before calling
+        if (signal?.aborted) throw new Error("Aborted by user");
+
+        const response = await ai.models.generateContent({
+          model: settings.geminiModel || 'gemini-2.0-flash',
+          contents: userPrompt,
+          config: {
+            systemInstruction: SYSTEM_PROMPT,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  category: { type: Type.STRING }
+                },
+                required: ["id", "category"]
+              }
+            }
+          },
+        });
+
+        jsonStr = response.text || '';
+    }
+    
+    // --- OPENROUTER PROVIDER ---
+    else {
+        const apiKey = settings.openRouterApiKey;
+        if (!apiKey) throw new Error("OpenRouter API Key is missing. Please add it in Settings.");
+
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": window.location.origin, 
+            "X-Title": "AI Bookmark Manager",
+          },
+          body: JSON.stringify({
+            model: settings.openRouterModel,
+            messages: [
+              { role: "system", content: SYSTEM_PROMPT },
+              { role: "user", content: userPrompt }
+            ],
+            response_format: { type: "json_object" }
+          }),
+          signal // Pass signal to fetch
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            // Provide exact error for debugging
+            throw new Error(errorData.error?.message || `Provider returned error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        jsonStr = data.choices?.[0]?.message?.content || '';
+    }
+
+    return parseResponse(jsonStr);
 };

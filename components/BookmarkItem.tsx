@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ExternalLink, Trash2, GripVertical, CheckCircle, AlertCircle } from 'lucide-react';
+import { ExternalLink, Trash2, GripVertical, CheckCircle, AlertCircle, MoreHorizontal, Copy } from 'lucide-react';
 import { Bookmark } from '../types';
 
 interface Props {
   bookmark: Bookmark;
   onDelete: (id: string) => void;
+  variant?: 'card' | 'list';
 }
 
-export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete }) => {
+export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, variant = 'card' }) => {
   const {
     attributes,
     listeners,
@@ -17,13 +18,9 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete }) => {
     transform,
     transition,
     isDragging
-  } = useSortable({ id: bookmark.id });
+  } = useSortable({ id: bookmark.id, disabled: variant === 'list' });
 
   // State to manage image source and fallback levels
-  // Level 0: Original (mshots)
-  // Level 1: Backup Screenshot (thum.io)
-  // Level 2: Logo/Favicon
-  // Level 3: Text Avatar
   const [imageSrc, setImageSrc] = useState(bookmark.preview || '');
   const [fallbackLevel, setFallbackLevel] = useState(0);
 
@@ -43,29 +40,80 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete }) => {
 
   const handleImageError = () => {
     if (fallbackLevel === 0) {
-      // Attempt 1: Try thum.io as a backup screenshot service
       setFallbackLevel(1);
       setImageSrc(`https://image.thum.io/get/width/600/crop/800/noanimate/${bookmark.url}`);
     } else if (fallbackLevel === 1) {
-      // Attempt 2: Fallback to high-res favicon/logo
       setFallbackLevel(2);
       try {
         const domain = new URL(bookmark.url).hostname;
-        setImageSrc(`https://www.google.com/s2/favicons?domain=${domain}&sz=256`);
+        setImageSrc(`https://www.google.com/s2/favicons?domain=${domain}&sz=128`);
       } catch (e) {
-         // If URL parsing fails, skip to text
          setFallbackLevel(3);
-         setImageSrc(`https://ui-avatars.com/api/?name=${encodeURIComponent(bookmark.title)}&background=f3f4f6&color=6b7280&size=256&font-size=0.33`);
+         setImageSrc(`https://ui-avatars.com/api/?name=${encodeURIComponent(bookmark.title)}&background=f3f4f6&color=6b7280&size=128&font-size=0.33`);
       }
     } else if (fallbackLevel === 2) {
-      // Final Attempt: Text Avatar
       setFallbackLevel(3);
-      setImageSrc(`https://ui-avatars.com/api/?name=${encodeURIComponent(bookmark.title)}&background=f3f4f6&color=6b7280&size=256&font-size=0.33`);
+      setImageSrc(`https://ui-avatars.com/api/?name=${encodeURIComponent(bookmark.title)}&background=f3f4f6&color=6b7280&size=128&font-size=0.33`);
     }
   };
 
-  // Adjust image styling based on what we are showing
-  // Screenshots (Level 0 & 1) should cover. Logo (Level 2) should contain.
+  const handleCopyUrl = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(bookmark.url);
+  };
+
+  // --- LIST VARIANT ---
+  if (variant === 'list') {
+    // For list view, we prioritize the favicon (Level 2) logic directly if possible, or fallbacks
+    const faviconUrl = `https://www.google.com/s2/favicons?domain=${new URL(bookmark.url).hostname}&sz=64`;
+
+    return (
+      <div className="flex items-center justify-between p-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 group">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <img 
+            src={faviconUrl} 
+            alt="" 
+            className="w-5 h-5 rounded-sm object-contain opacity-80"
+            onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${bookmark.title}&size=32` }}
+          />
+          <div className="min-w-0 flex-1">
+             <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-700 hover:text-blue-600 font-medium truncate block">
+                {bookmark.title}
+             </a>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+            <button 
+                onClick={handleCopyUrl}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
+                title="Copy URL"
+            >
+                <Copy size={14} />
+            </button>
+            <a 
+                href={bookmark.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-gray-100"
+                title="Open Link"
+            >
+                <ExternalLink size={14} />
+            </a>
+            <button 
+                onClick={() => onDelete(bookmark.id)}
+                className="text-gray-400 hover:text-red-500 p-1 rounded hover:bg-gray-100"
+                title="Delete"
+            >
+                <Trash2 size={14} />
+            </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- CARD VARIANT (Default) ---
   const isScreenshot = fallbackLevel < 2;
   const imageClass = isScreenshot
     ? "w-full h-full object-cover object-top opacity-95 group-hover:opacity-100 transition-opacity"

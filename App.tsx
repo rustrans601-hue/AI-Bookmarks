@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { 
   DndContext, 
   closestCenter, 
@@ -22,12 +22,15 @@ import {
   RefreshCcw, 
   Search,
   Settings,
-  ArrowDownUp
+  ArrowDownUp,
+  LayoutTemplate,
+  Grid,
+  Square
 } from 'lucide-react';
 
-import { Bookmark, CATEGORIES, CategoryType } from './types';
+import { Bookmark, DEFAULT_CATEGORIES } from './types';
 import { getBookmarks, saveBookmarks, addBookmarkToStorage, deleteBookmarkFromStorage, getScreenshotUrl } from './services/storage';
-import { categorizeBookmarkWithAI } from './services/gemini';
+import { organizeBookmarksBatch } from './services/gemini';
 import { ImportedData } from './services/importUtils';
 import { BookmarkItem } from './components/BookmarkItem';
 import { AddBookmarkModal } from './components/AddBookmarkModal';
@@ -38,11 +41,16 @@ const App: React.FC = () => {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'board'>('grid');
+  
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+
+  // Controller to stop AI analysis
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // DnD Sensors
   const sensors = useSensors(
@@ -55,6 +63,23 @@ const App: React.FC = () => {
   useEffect(() => {
     setBookmarks(getBookmarks());
   }, []);
+
+  // --- Derived State: Dynamic Categories ---
+  const availableCategories = useMemo(() => {
+    // Get all unique categories from current bookmarks
+    const categoriesSet = new Set(bookmarks.map(b => b.category));
+    
+    if (bookmarks.length === 0) {
+        return DEFAULT_CATEGORIES;
+    }
+    
+    const cats = Array.from(categoriesSet);
+    return cats.sort((a: string, b: string) => {
+        if (a === 'Uncategorized') return 1;
+        if (b === 'Uncategorized') return -1;
+        return a.localeCompare(b);
+    });
+  }, [bookmarks]);
 
   // --- Actions ---
 
@@ -84,6 +109,12 @@ const App: React.FC = () => {
     if (window.confirm('Are you sure you want to delete this bookmark?')) {
         const updated = deleteBookmarkFromStorage(id);
         setBookmarks(updated);
+        
+        // If we deleted the last item in the selected category, switch to All
+        const remainingInCat = updated.filter(b => b.category === selectedCategory);
+        if (selectedCategory !== 'All' && remainingInCat.length === 0) {
+            setSelectedCategory('All');
+        }
     }
   };
 
@@ -103,8 +134,6 @@ const App: React.FC = () => {
      const updated = [...bookmarks, ...newBookmarks];
      setBookmarks(updated);
      saveBookmarks(updated);
-     // Optional: Trigger AI analysis automatically after import? 
-     // For now, let user trigger it.
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -122,33 +151,69 @@ const App: React.FC = () => {
   };
 
   const handleAICategorization = async () => {
-    if (bookmarks.length === 0) return;
+    if (isAnalyzing) return;
+
+    // 1. Identify bookmarks that need organization
+    const targets = bookmarks.filter(b => 
+        ['Uncategorized', 'Other', 'Без категории'].includes(b.category)
+    );
+
+    if (targets.length === 0) {
+        alert("No uncategorized bookmarks found to organize.");
+        return;
+    }
+
     setIsAnalyzing(true);
     
-    const updates = [...bookmarks];
-    let changed = false;
-
-    // We process sequentially to avoid rate limits in this client-side demo
-    for (let i = 0; i < updates.length; i++) {
-        if (updates[i].category === 'Uncategorized' || updates[i].category === 'Other') {
-             const newCategory = await categorizeBookmarkWithAI(updates[i].title, updates[i].url);
-             if (newCategory !== updates[i].category) {
-                 updates[i] = { ...updates[i], category: newCategory };
-                 changed = true;
-             }
-        }
-    }
-
-    if (changed) {
-        saveBookmarks(updates);
-        setBookmarks(updates);
-    }
+    // Create new abort controller
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     
-    setIsAnalyzing(false);
+    // 2. Prepare payload for AI
+    const payload = targets.map(b => ({
+        id: b.id,
+        title: b.title,
+        url: b.url
+    }));
+
+    // 3. Get existing categories
+    const existingCats = availableCategories.filter(c => 
+        !['Uncategorized', 'Other', 'Без категории'].includes(c)
+    );
+
+    try {
+        // 4. Call Batch API with Signal
+        const results = await organizeBookmarksBatch(payload, existingCats, controller.signal);
+
+        // 5. Update State
+        if (results.length > 0) {
+            const newBookmarks = bookmarks.map(b => {
+                const match = results.find(r => r.id === b.id);
+                if (match) {
+                    return { ...b, category: match.category };
+                }
+                return b;
+            });
+            
+            setBookmarks(newBookmarks);
+            saveBookmarks(newBookmarks);
+        }
+    } catch (error) {
+        console.error("AI Analysis error:", error);
+    } finally {
+        setIsAnalyzing(false);
+        abortControllerRef.current = null;
+    }
+  };
+
+  const handleStopAnalysis = () => {
+    if (abortControllerRef.current) {
+        console.log("Stopping AI analysis...");
+        abortControllerRef.current.abort();
+    }
   };
 
   const handleStatusCheck = async () => {
-    // Simulate checking URL health
     const updated = bookmarks.map(b => ({
         ...b,
         status: Math.random() > 0.8 ? 'inactive' as const : 'active' as const
@@ -157,25 +222,25 @@ const App: React.FC = () => {
     saveBookmarks(updated);
   };
 
-  // --- Derived State ---
+  // --- Filtered Data ---
 
-  const filteredBookmarks = useMemo(() => {
+  const getBookmarksBySearch = (list: Bookmark[]) => {
+    if (!searchQuery) return list;
+    const q = searchQuery.toLowerCase();
+    return list.filter(b => 
+      b.title.toLowerCase().includes(q) || 
+      b.url.toLowerCase().includes(q)
+    );
+  };
+
+  const filteredGridBookmarks = useMemo(() => {
     let result = bookmarks;
-
     if (selectedCategory !== 'All') {
       result = result.filter(b => b.category === selectedCategory);
     }
-
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(b => 
-        b.title.toLowerCase().includes(q) || 
-        b.url.toLowerCase().includes(q)
-      );
-    }
-
-    return result;
+    return getBookmarksBySearch(result);
   }, [bookmarks, selectedCategory, searchQuery]);
+
 
   return (
     <div className="min-h-screen pb-12">
@@ -202,6 +267,26 @@ const App: React.FC = () => {
                   />
                </div>
 
+              {/* View Toggle */}
+              <div className="flex items-center bg-gray-100 p-1 rounded-lg">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                  title="Grid View"
+                >
+                  <Grid size={18} />
+                </button>
+                <button
+                  onClick={() => setViewMode('board')}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'board' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                  title="Board View"
+                >
+                  <LayoutTemplate size={18} />
+                </button>
+              </div>
+
+              <div className="h-6 w-px bg-gray-200 mx-1"></div>
+
               <button 
                 onClick={() => setIsSettingsOpen(true)}
                 className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
@@ -226,23 +311,24 @@ const App: React.FC = () => {
                 <RefreshCcw size={20} />
               </button>
 
-              <button 
-                onClick={handleAICategorization}
-                disabled={isAnalyzing}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isAnalyzing ? 'bg-purple-100 text-purple-700' : 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md hover:shadow-lg hover:opacity-90'}`}
-              >
-                {isAnalyzing ? (
-                    <>
-                        <RefreshCcw size={14} className="animate-spin" />
-                        Analyzing...
-                    </>
-                ) : (
-                    <>
-                        <Sparkles size={14} />
-                        AI Organize
-                    </>
-                )}
-              </button>
+              {isAnalyzing ? (
+                <button 
+                  onClick={handleStopAnalysis}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all bg-red-100 text-red-700 hover:bg-red-200 border border-red-200 shadow-sm"
+                  title="Stop AI Sorting"
+                >
+                    <Square size={14} fill="currentColor" />
+                    Stop AI Sorting
+                </button>
+              ) : (
+                <button 
+                    onClick={handleAICategorization}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md hover:shadow-lg hover:opacity-90"
+                >
+                    <Sparkles size={14} />
+                    AI Organize
+                </button>
+              )}
 
               <button 
                 onClick={() => setIsAddModalOpen(true)}
@@ -254,7 +340,6 @@ const App: React.FC = () => {
             </div>
           </div>
           
-          {/* Mobile Search Bar */}
           <div className="md:hidden pb-3">
              <div className="flex items-center bg-gray-100 rounded-lg px-3 py-2 border border-transparent focus-within:bg-white focus-within:border-blue-500 transition-all">
                   <Search size={16} className="text-gray-400" />
@@ -273,73 +358,127 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
         
-        {/* Category Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-4 scrollbar-hide mb-4">
-            <button
-                onClick={() => setSelectedCategory('All')}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === 'All' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'}`}
-            >
-                All Bookmarks
-            </button>
-            {CATEGORIES.map(cat => (
+        {viewMode === 'grid' && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-6">
                 <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === cat ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'}`}
+                    onClick={() => setSelectedCategory('All')}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors truncate ${selectedCategory === 'All' ? 'bg-gray-900 text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'}`}
                 >
-                    {cat}
+                    All Bookmarks
                 </button>
-            ))}
-        </div>
+                {availableCategories.map(cat => (
+                    <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors truncate ${selectedCategory === cat ? 'bg-gray-900 text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'}`}
+                        title={cat}
+                    >
+                        {cat}
+                    </button>
+                ))}
+            </div>
+        )}
 
-        {/* Stats / Info */}
         <div className="flex justify-between items-center mb-6">
             <h2 className="text-gray-700 font-medium flex items-center gap-2">
                 <ListFilter size={18} />
-                {selectedCategory} ({filteredBookmarks.length})
+                {viewMode === 'grid' ? (
+                    `${selectedCategory} (${filteredGridBookmarks.length})`
+                ) : (
+                    `All Categories (${availableCategories.length})`
+                )}
             </h2>
-            {selectedCategory === 'All' && !searchQuery && (
+            {selectedCategory === 'All' && !searchQuery && viewMode === 'grid' && (
                 <span className="text-xs text-gray-400 italic">Drag items to reorder</span>
             )}
         </div>
 
-        {/* Grid */}
-        <DndContext 
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-        >
-            <SortableContext 
-                items={filteredBookmarks.map(b => b.id)}
-                strategy={rectSortingStrategy}
+        {viewMode === 'grid' && (
+            <DndContext 
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
             >
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {filteredBookmarks.map((bookmark) => (
-                        <BookmarkItem 
-                            key={bookmark.id} 
-                            bookmark={bookmark} 
-                            onDelete={handleDeleteBookmark}
-                        />
-                    ))}
-                    
-                    {filteredBookmarks.length === 0 && (
-                        <div className="col-span-full py-16 text-center">
-                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
-                                <Search className="text-gray-400" size={32} />
+                <SortableContext 
+                    items={filteredGridBookmarks.map(b => b.id)}
+                    strategy={rectSortingStrategy}
+                >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        {filteredGridBookmarks.map((bookmark) => (
+                            <BookmarkItem 
+                                key={bookmark.id} 
+                                bookmark={bookmark} 
+                                onDelete={handleDeleteBookmark}
+                            />
+                        ))}
+                        
+                        {filteredGridBookmarks.length === 0 && (
+                            <div className="col-span-full py-16 text-center">
+                                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
+                                    <Search className="text-gray-400" size={32} />
+                                </div>
+                                <h3 className="text-lg font-medium text-gray-900">No bookmarks found</h3>
+                                <p className="text-gray-500 mt-1">Try adjusting your search or add a new bookmark.</p>
+                                <button 
+                                    onClick={() => setIsAddModalOpen(true)}
+                                    className="mt-4 px-4 py-2 bg-blue-50 text-blue-600 font-medium rounded-lg hover:bg-blue-100 transition-colors"
+                                >
+                                    Add your first bookmark
+                                </button>
                             </div>
-                            <h3 className="text-lg font-medium text-gray-900">No bookmarks found</h3>
-                            <p className="text-gray-500 mt-1">Try adjusting your search or add a new bookmark.</p>
-                            <button 
-                                onClick={() => setIsAddModalOpen(true)}
-                                className="mt-4 px-4 py-2 bg-blue-50 text-blue-600 font-medium rounded-lg hover:bg-blue-100 transition-colors"
-                            >
-                                Add your first bookmark
-                            </button>
+                        )}
+                    </div>
+                </SortableContext>
+            </DndContext>
+        )}
+
+        {viewMode === 'board' && (
+            <div className="columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-6 space-y-6">
+                {availableCategories.map((cat) => {
+                    const catBookmarks = getBookmarksBySearch(bookmarks).filter(b => b.category === cat);
+                    if (catBookmarks.length === 0) return null;
+
+                    const colors = [
+                        'bg-blue-100 text-blue-600',
+                        'bg-green-100 text-green-600',
+                        'bg-purple-100 text-purple-600',
+                        'bg-orange-100 text-orange-600',
+                        'bg-pink-100 text-pink-600',
+                        'bg-indigo-100 text-indigo-600',
+                        'bg-teal-100 text-teal-600'
+                    ];
+                    const colorIndex = cat.length % colors.length;
+                    const colorClass = colors[colorIndex];
+                    
+                    return (
+                        <div key={cat} className="break-inside-avoid mb-6 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+                            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${colorClass}`}>
+                                        {cat.substring(0, 1).toUpperCase()}
+                                    </div>
+                                    <h3 className="font-semibold text-gray-800">{cat}</h3>
+                                </div>
+                                <span className="bg-gray-200 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                                    {catBookmarks.length}
+                                </span>
+                            </div>
+                            
+                            <div className="flex flex-col">
+                                {catBookmarks.map(bookmark => (
+                                    <BookmarkItem 
+                                        key={bookmark.id}
+                                        bookmark={bookmark}
+                                        onDelete={handleDeleteBookmark}
+                                        variant="list"
+                                    />
+                                ))}
+                            </div>
                         </div>
-                    )}
-                </div>
-            </SortableContext>
-        </DndContext>
+                    );
+                })}
+            </div>
+        )}
       </main>
 
       <AddBookmarkModal 
@@ -347,6 +486,7 @@ const App: React.FC = () => {
         onClose={() => setIsAddModalOpen(false)}
         onAdd={handleAddBookmark}
         isProcessing={isAdding}
+        existingCategories={availableCategories}
       />
 
       <SettingsModal 

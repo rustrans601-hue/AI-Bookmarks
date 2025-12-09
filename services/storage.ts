@@ -1,6 +1,7 @@
-import { Bookmark } from '../types';
+import { Bookmark, AISettings, DEFAULT_AI_SETTINGS } from '../types';
 
 const STORAGE_KEY = 'ai_bookmarks_data';
+const SETTINGS_KEY = 'ai_bookmarks_settings';
 
 export const getScreenshotUrl = (url: string): string => {
   try {
@@ -100,4 +101,56 @@ export const deleteBookmarkFromStorage = (id: string) => {
   const bookmarks = getBookmarks().filter(b => b.id !== id);
   saveBookmarks(bookmarks);
   return bookmarks;
+};
+
+// --- AI Settings ---
+
+export const getAISettings = (): AISettings => {
+  const data = localStorage.getItem(SETTINGS_KEY);
+  let settings = DEFAULT_AI_SETTINGS;
+
+  if (data) {
+    try {
+      const parsed = JSON.parse(data);
+      
+      // Migration: If old format (apiKey/model directly on root), move to OpenRouter fields
+      if (parsed.apiKey && !parsed.openRouterApiKey) {
+        parsed.openRouterApiKey = parsed.apiKey;
+        parsed.openRouterModel = parsed.model || DEFAULT_AI_SETTINGS.openRouterModel;
+        parsed.provider = 'openrouter';
+      }
+      
+      // Migration: Fix broken model ID from previous default
+      if (parsed.openRouterModel === 'google/gemini-2.0-flash-lite-preview-02-05:free') {
+          parsed.openRouterModel = DEFAULT_AI_SETTINGS.openRouterModel;
+      }
+      
+      settings = { ...DEFAULT_AI_SETTINGS, ...parsed };
+      
+      // Ensure numeric values exist
+      if (!settings.batchSize) settings.batchSize = DEFAULT_AI_SETTINGS.batchSize;
+      if (settings.delayBetweenBatches === undefined) settings.delayBetweenBatches = DEFAULT_AI_SETTINGS.delayBetweenBatches;
+
+    } catch {
+      settings = DEFAULT_AI_SETTINGS;
+    }
+  }
+
+  // --- Auto-Injection of Default/Env Keys ---
+  
+  // 1. Force the hardcoded OpenRouter key if the stored one is empty
+  if (!settings.openRouterApiKey && DEFAULT_AI_SETTINGS.openRouterApiKey) {
+      settings.openRouterApiKey = DEFAULT_AI_SETTINGS.openRouterApiKey;
+  }
+  
+  // 2. Fallback for Gemini key via environment variables
+  if (!settings.geminiApiKey && process.env.API_KEY) {
+      settings.geminiApiKey = process.env.API_KEY;
+  }
+
+  return settings;
+};
+
+export const saveAISettings = (settings: AISettings) => {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 };
