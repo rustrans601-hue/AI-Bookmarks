@@ -1,0 +1,5 @@
+{
+  "name": "AI Bookmark Manager",
+  "description": "A smart bookmark manager that uses Google Gemini to automatically categorize your links, featuring a modern UI and drag-and-drop organization.",
+  "requestFramePermissions": []
+}
