@@ -80,10 +80,13 @@ export const organizeBookmarksBatch = async (
 
       console.error(`Error processing chunk ${i + 1}:`, error);
       
-      // Stop on Quota Exceeded to prevent log spam and API ban
-      const errMsg = error?.message || String(error);
-      if (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED')) {
-          console.error("Aborting remaining chunks due to Rate Limit/Quota Exceeded.");
+      // Stop on Quota Exceeded or Auth errors to prevent log spam
+      const errMsg = (error?.message || String(error)).toLowerCase();
+      if (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('resource_exhausted') || 
+          errMsg.includes('401') || errMsg.includes('unauthorized') || 
+          errMsg.includes('403') || errMsg.includes('forbidden') ||
+          errMsg.includes('invalid api key')) {
+          console.error("Aborting remaining chunks due to Critical API Error (Rate Limit/Quota/Auth).");
           break;
       }
     }
@@ -106,9 +109,25 @@ const processChunkWithRetry = async (
     } catch (error: any) {
         if (signal?.aborted || error.name === 'AbortError') throw new Error("Aborted by user");
 
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const isProviderError = errorMessage.includes('Provider') || errorMessage.includes('502') || errorMessage.includes('503');
-        const isRateLimit = errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('quota');
+        const errorMessage = (error instanceof Error ? error.message : String(error)).toLowerCase();
+        
+        // Critical Errors - DO NOT RETRY
+        // Check for 401, 403, "Unauthorized", "Forbidden", "Invalid Key"
+        const isAuthError = 
+            errorMessage.includes('401') || 
+            errorMessage.includes('unauthorized') || 
+            errorMessage.includes('403') || 
+            errorMessage.includes('forbidden') ||
+            errorMessage.includes('invalid api key') ||
+            errorMessage.includes('invalid_api_key');
+
+        if (isAuthError) {
+            console.error("Authentication or Permission error. Stopping retries.");
+            throw error;
+        }
+
+        const isProviderError = errorMessage.includes('provider') || errorMessage.includes('502') || errorMessage.includes('503') || errorMessage.includes('failed to fetch');
+        const isRateLimit = errorMessage.includes('429') || errorMessage.includes('resource_exhausted') || errorMessage.includes('quota');
 
         // FALLBACK LOGIC:
         const settings = getAISettings();
@@ -226,8 +245,6 @@ const processChunk = async (
         
         const ai = new GoogleGenAI({ apiKey });
         
-        // Note: GoogleGenAI SDK doesn't support AbortSignal directly in this version
-        // We check before calling
         if (signal?.aborted) throw new Error("Aborted by user");
 
         const response = await ai.models.generateContent({
@@ -253,6 +270,56 @@ const processChunk = async (
         jsonStr = response.text || '';
     }
     
+    // --- OLLAMA PROVIDER ---
+    else if (provider === 'ollama') {
+        let baseUrl = (settings.ollamaBaseUrl || 'http://localhost:11434').replace(/\/$/, '');
+        const model = settings.ollamaModel || 'llama3';
+
+        const doFetch = async (url: string) => {
+             console.log(`Calling Ollama at ${url} with model ${model}`);
+             const res = await fetch(`${url}/api/chat`, {
+                 method: "POST",
+                 headers: {
+                    "Content-Type": "application/json",
+                    // Origin and Referer are stripped by Electron main process to bypass CORS
+                 },
+                 body: JSON.stringify({
+                    model: model,
+                    messages: [
+                      { role: "system", content: SYSTEM_PROMPT },
+                      { role: "user", content: userPrompt }
+                    ],
+                    stream: false,
+                    format: "json" // Force JSON mode for Ollama
+                  }),
+                  signal
+             });
+             
+             if (!res.ok) {
+                throw new Error(`Ollama API Error: ${res.status} ${res.statusText}`);
+             }
+             return res;
+        };
+
+        let response;
+        try {
+            response = await doFetch(baseUrl);
+        } catch (e: any) {
+             // Auto-retry with 127.0.0.1 if localhost fails (common IPv6 issue)
+             // Only retry if it looks like a network connection error
+             if (baseUrl.includes('localhost') && (e.message.includes('fetch') || e.message.includes('failed'))) {
+                 console.warn("Ollama connection failed on localhost, retrying with 127.0.0.1...");
+                 baseUrl = baseUrl.replace('localhost', '127.0.0.1');
+                 response = await doFetch(baseUrl);
+             } else {
+                 throw e;
+             }
+        }
+
+        const data = await response.json();
+        jsonStr = data.message?.content || '';
+    }
+
     // --- OPENROUTER PROVIDER ---
     else {
         const apiKey = settings.openRouterApiKey;
@@ -279,8 +346,9 @@ const processChunk = async (
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            // Provide exact error for debugging
-            throw new Error(errorData.error?.message || `Provider returned error: ${response.status} ${response.statusText}`);
+            const backendError = errorData.error?.message;
+            // Throw a detailed error including status to help the retry logic
+            throw new Error(backendError || `Provider returned error: ${response.status} ${response.statusText}`);
         }
 
         const data = await response.json();

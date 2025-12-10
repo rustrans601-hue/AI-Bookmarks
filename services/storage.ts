@@ -130,6 +130,8 @@ export const getAISettings = (): AISettings => {
       // Ensure numeric values exist
       if (!settings.batchSize) settings.batchSize = DEFAULT_AI_SETTINGS.batchSize;
       if (settings.delayBetweenBatches === undefined) settings.delayBetweenBatches = DEFAULT_AI_SETTINGS.delayBetweenBatches;
+      if (!settings.ollamaBaseUrl) settings.ollamaBaseUrl = DEFAULT_AI_SETTINGS.ollamaBaseUrl;
+      if (!settings.ollamaModel) settings.ollamaModel = DEFAULT_AI_SETTINGS.ollamaModel;
 
     } catch {
       settings = DEFAULT_AI_SETTINGS;

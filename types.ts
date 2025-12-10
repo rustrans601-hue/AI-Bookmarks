@@ -28,7 +28,7 @@ export interface AIResponse {
   category: string;
 }
 
-export type AIProvider = 'openrouter' | 'gemini';
+export type AIProvider = 'openrouter' | 'gemini' | 'ollama';
 
 export interface AISettings {
   provider: AIProvider;
@@ -40,6 +40,10 @@ export interface AISettings {
   // Gemini Settings
   geminiApiKey: string;
   geminiModel: string;
+
+  // Ollama Settings
+  ollamaBaseUrl: string;
+  ollamaModel: string;
 
   // Performance Settings
   batchSize: number;
@@ -64,10 +68,12 @@ export const GEMINI_MODELS = [
 
 export const DEFAULT_AI_SETTINGS: AISettings = {
   provider: 'openrouter',
-  openRouterApiKey: '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',
+  openRouterApiKey: '',
   openRouterModel: 'google/gemini-2.0-pro-exp-02-05:free',
   geminiApiKey: '',
   geminiModel: 'gemini-2.0-flash',
+  ollamaBaseUrl: 'http://localhost:11434',
+  ollamaModel: 'llama3',
   batchSize: 1, // Default to 1 for safety
   delayBetweenBatches: 5000, // Default 5 seconds
 };

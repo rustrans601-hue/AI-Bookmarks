@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, Server, Cpu, Save, Key, ExternalLink, Zap, RefreshCw, Gauge, Clock } from 'lucide-react';
+import { X, ShieldCheck, Server, Cpu, Save, Key, ExternalLink, Zap, RefreshCw, Gauge, Clock, HardDrive, AlertTriangle } from 'lucide-react';
 import { getAISettings, saveAISettings } from '../services/storage';
 import { OPENROUTER_MODELS, GEMINI_MODELS, AIProvider, DEFAULT_AI_SETTINGS } from '../types';
 
@@ -19,6 +19,13 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [geminiModel, setGeminiModel] = useState('');
 
+  // Ollama Settings
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState('');
+  const [ollamaModel, setOllamaModel] = useState('');
+  const [ollamaModelsList, setOllamaModelsList] = useState<{id: string, name: string}[]>([]);
+  const [isFetchingOllama, setIsFetchingOllama] = useState(false);
+  const [ollamaError, setOllamaError] = useState<string | null>(null);
+
   // Performance Settings
   const [batchSize, setBatchSize] = useState<number>(DEFAULT_AI_SETTINGS.batchSize);
   const [delaySeconds, setDelaySeconds] = useState<number>(5);
@@ -33,9 +40,18 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
       setOpenRouterModel(settings.openRouterModel);
       setGeminiApiKey(settings.geminiApiKey);
       setGeminiModel(settings.geminiModel);
+      setOllamaBaseUrl(settings.ollamaBaseUrl);
+      setOllamaModel(settings.ollamaModel);
+      
+      // Initialize list with current model if set
+      if (settings.ollamaModel) {
+          setOllamaModelsList([{ id: settings.ollamaModel, name: settings.ollamaModel }]);
+      }
+
       setBatchSize(settings.batchSize || 1);
       setDelaySeconds((settings.delayBetweenBatches || 5000) / 1000);
       setIsSaved(false);
+      setOllamaError(null);
     }
   }, [isOpen]);
 
@@ -71,9 +87,62 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
       }
     } catch (error) {
       console.error("Failed to fetch OpenRouter models:", error);
-      // Keep default list on error
     } finally {
       setIsLoadingModels(false);
+    }
+  };
+
+  const fetchOllamaModels = async () => {
+    if (!ollamaBaseUrl) return;
+    setIsFetchingOllama(true);
+    setOllamaError(null);
+
+    const tryFetch = async (url: string) => {
+        const baseUrl = url.replace(/\/$/, '');
+        const response = await fetch(`${baseUrl}/api/tags`);
+        if (!response.ok) throw new Error(`Status: ${response.status}`);
+        return await response.json();
+    };
+
+    try {
+        let data;
+        try {
+            data = await tryFetch(ollamaBaseUrl);
+        } catch (e) {
+             // Retry with 127.0.0.1 if localhost failed
+             if (ollamaBaseUrl.includes('localhost')) {
+                const altUrl = ollamaBaseUrl.replace('localhost', '127.0.0.1');
+                try {
+                    data = await tryFetch(altUrl);
+                    setOllamaBaseUrl(altUrl); // Update field if successful
+                } catch (e2) {
+                    throw e; // Throw original error
+                }
+             } else {
+                 throw e;
+             }
+        }
+
+        if (data.models && Array.isArray(data.models)) {
+            const mapped = data.models.map((m: any) => ({
+                id: m.name,
+                name: m.name
+            }));
+            setOllamaModelsList(mapped);
+            // Auto-select first if none selected
+            if (mapped.length > 0 && !ollamaModel) {
+                setOllamaModel(mapped[0].id);
+            }
+        }
+    } catch (error: any) {
+        console.error("Failed to fetch Ollama models:", error);
+        if (error.message && error.message.includes('Failed to fetch')) {
+             setOllamaError("Connection failed. Ensure Ollama is running ('ollama serve') and accessible.");
+        } else {
+             setOllamaError(error.message || "Unknown error connecting to Ollama");
+        }
+    } finally {
+        setIsFetchingOllama(false);
     }
   };
 
@@ -84,6 +153,8 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
       openRouterModel,
       geminiApiKey,
       geminiModel,
+      ollamaBaseUrl,
+      ollamaModel,
       batchSize,
       delayBetweenBatches: delaySeconds * 1000
     });
@@ -117,18 +188,24 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">
               AI Provider
             </label>
-            <div className="grid grid-cols-2 bg-gray-100 p-1 rounded-lg">
+            <div className="grid grid-cols-3 bg-gray-100 p-1 rounded-lg gap-1">
                 <button
                     onClick={() => setProvider('openrouter')}
-                    className={`py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${provider === 'openrouter' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`py-2 text-xs font-medium rounded-md transition-all flex flex-col items-center justify-center gap-1 ${provider === 'openrouter' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                    <Server size={16} /> OpenRouter
+                    <Server size={14} /> OpenRouter
                 </button>
                 <button
                     onClick={() => setProvider('gemini')}
-                    className={`py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${provider === 'gemini' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`py-2 text-xs font-medium rounded-md transition-all flex flex-col items-center justify-center gap-1 ${provider === 'gemini' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                    <Zap size={16} /> Google Gemini
+                    <Zap size={14} /> Google Gemini
+                </button>
+                <button
+                    onClick={() => setProvider('ollama')}
+                    className={`py-2 text-xs font-medium rounded-md transition-all flex flex-col items-center justify-center gap-1 ${provider === 'ollama' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    <HardDrive size={14} /> Local (Ollama)
                 </button>
             </div>
           </div>
@@ -136,73 +213,146 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                  {provider === 'openrouter' ? <Server size={18} className="text-blue-600" /> : <Zap size={18} className="text-blue-600" />}
-                  {provider === 'openrouter' ? 'OpenRouter Configuration' : 'Gemini API Configuration'}
+                  {provider === 'openrouter' && <Server size={18} className="text-blue-600" />}
+                  {provider === 'gemini' && <Zap size={18} className="text-blue-600" />}
+                  {provider === 'ollama' && <HardDrive size={18} className="text-blue-600" />}
+                  
+                  {provider === 'openrouter' && 'OpenRouter Configuration'}
+                  {provider === 'gemini' && 'Gemini API Configuration'}
+                  {provider === 'ollama' && 'Ollama Configuration'}
                 </h3>
-                <a 
-                  href={provider === 'openrouter' ? "https://openrouter.ai/keys" : "https://aistudio.google.com/app/apikey"}
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                >
-                  Get API Key <ExternalLink size={10} />
-                </a>
+                
+                {provider === 'openrouter' && (
+                    <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                        Get API Key <ExternalLink size={10} />
+                    </a>
+                )}
+                {provider === 'gemini' && (
+                    <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                        Get API Key <ExternalLink size={10} />
+                    </a>
+                )}
               </div>
               
-              {/* API Key Input */}
-              <div className="space-y-2">
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  API Key
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Key size={16} className="text-gray-400" />
-                  </div>
-                  <input 
-                    type="password" 
-                    value={provider === 'openrouter' ? openRouterApiKey : geminiApiKey}
-                    onChange={(e) => provider === 'openrouter' ? setOpenRouterApiKey(e.target.value) : setGeminiApiKey(e.target.value)}
-                    placeholder={provider === 'openrouter' ? "sk-or-..." : "AIza..."}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                  />
-                </div>
-              </div>
+              {provider === 'ollama' ? (
+                 <>
+                    {/* Ollama Base URL */}
+                    <div className="space-y-2">
+                        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Base URL
+                        </label>
+                        <input 
+                            type="text" 
+                            value={ollamaBaseUrl}
+                            onChange={(e) => setOllamaBaseUrl(e.target.value)}
+                            placeholder="http://localhost:11434"
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                        />
+                        <p className="text-[10px] text-gray-400">Default is http://localhost:11434</p>
+                    </div>
 
-              {/* Model Select */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    AI Model
-                    </label>
-                    {provider === 'openrouter' && (
-                        <button 
-                            onClick={fetchOpenRouterModels} 
+                    {/* Ollama Model Input */}
+                    <div className="space-y-2">
+                         <div className="flex items-center justify-between">
+                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Model Name
+                            </label>
+                            <button 
+                                onClick={fetchOllamaModels} 
+                                disabled={isFetchingOllama || !ollamaBaseUrl}
+                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 disabled:opacity-50"
+                            >
+                                <RefreshCw size={10} className={isFetchingOllama ? "animate-spin" : ""} />
+                                {isFetchingOllama ? 'Connecting...' : 'Fetch Models'}
+                            </button>
+                        </div>
+                        <div className="relative">
+                            {ollamaModelsList.length > 0 ? (
+                                <select 
+                                    value={ollamaModel}
+                                    onChange={(e) => setOllamaModel(e.target.value)}
+                                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                >
+                                    {ollamaModelsList.map(m => (
+                                        <option key={m.id} value={m.id}>{m.name}</option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <input 
+                                    type="text" 
+                                    value={ollamaModel}
+                                    onChange={(e) => setOllamaModel(e.target.value)}
+                                    placeholder="llama3"
+                                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                />
+                            )}
+                        </div>
+                        {ollamaError && (
+                            <div className="flex items-start gap-2 p-2 bg-red-50 text-red-700 text-xs rounded border border-red-100">
+                                <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                                <span>{ollamaError}</span>
+                            </div>
+                        )}
+                    </div>
+                 </>
+              ) : (
+                <>
+                    {/* API Key Input */}
+                    <div className="space-y-2">
+                        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        API Key
+                        </label>
+                        <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Key size={16} className="text-gray-400" />
+                        </div>
+                        <input 
+                            type="password" 
+                            value={provider === 'openrouter' ? openRouterApiKey : geminiApiKey}
+                            onChange={(e) => provider === 'openrouter' ? setOpenRouterApiKey(e.target.value) : setGeminiApiKey(e.target.value)}
+                            placeholder={provider === 'openrouter' ? "sk-or-..." : "AIza..."}
+                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                        />
+                        </div>
+                    </div>
+
+                    {/* Model Select */}
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            AI Model
+                            </label>
+                            {provider === 'openrouter' && (
+                                <button 
+                                    onClick={fetchOpenRouterModels} 
+                                    disabled={isLoadingModels}
+                                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 disabled:opacity-50"
+                                >
+                                    <RefreshCw size={10} className={isLoadingModels ? "animate-spin" : ""} />
+                                    {isLoadingModels ? 'Loading...' : 'Refresh List'}
+                                </button>
+                            )}
+                        </div>
+                        <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Cpu size={16} className="text-gray-400" />
+                        </div>
+                        <select 
+                            value={provider === 'openrouter' ? openRouterModel : geminiModel} 
+                            onChange={(e) => provider === 'openrouter' ? setOpenRouterModel(e.target.value) : setGeminiModel(e.target.value)}
                             disabled={isLoadingModels}
-                            className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 disabled:opacity-50"
+                            className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white appearance-none truncate disabled:bg-gray-100"
                         >
-                            <RefreshCw size={10} className={isLoadingModels ? "animate-spin" : ""} />
-                            {isLoadingModels ? 'Loading...' : 'Refresh List'}
-                        </button>
-                    )}
-                </div>
-                <div className="relative">
-                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Cpu size={16} className="text-gray-400" />
-                  </div>
-                  <select 
-                    value={provider === 'openrouter' ? openRouterModel : geminiModel} 
-                    onChange={(e) => provider === 'openrouter' ? setOpenRouterModel(e.target.value) : setGeminiModel(e.target.value)}
-                    disabled={isLoadingModels}
-                    className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white appearance-none truncate disabled:bg-gray-100"
-                  >
-                    {provider === 'openrouter' 
-                        ? openRouterModelsList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
-                        : GEMINI_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
-                    }
-                    {provider === 'openrouter' && <option value="custom">Custom (Specify ID below)</option>}
-                  </select>
-                </div>
-              </div>
+                            {provider === 'openrouter' 
+                                ? openRouterModelsList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                                : GEMINI_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                            }
+                            {provider === 'openrouter' && <option value="custom">Custom (Specify ID below)</option>}
+                        </select>
+                        </div>
+                    </div>
+                </>
+              )}
           </div>
 
           {/* PERFORMANCE SETTINGS */}
