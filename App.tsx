@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { 
   DndContext, 
@@ -29,11 +30,12 @@ import {
 } from 'lucide-react';
 
 import { Bookmark, DEFAULT_CATEGORIES } from './types';
-import { getBookmarks, saveBookmarks, addBookmarkToStorage, deleteBookmarkFromStorage, getScreenshotUrl } from './services/storage';
+import { getBookmarks, saveBookmarks, addBookmarkToStorage, updateBookmarkInStorage, deleteBookmarkFromStorage, getScreenshotUrl } from './services/storage';
 import { organizeBookmarksBatch } from './services/gemini';
 import { ImportedData } from './services/importUtils';
 import { BookmarkItem } from './components/BookmarkItem';
 import { AddBookmarkModal } from './components/AddBookmarkModal';
+import { EditBookmarkModal } from './components/EditBookmarkModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ImportExportModal } from './components/ImportExportModal';
 
@@ -46,6 +48,10 @@ const App: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  
+  // Edit State
+  const [editingBookmark, setEditingBookmark] = useState<Bookmark | null>(null);
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
 
@@ -83,7 +89,7 @@ const App: React.FC = () => {
 
   // --- Actions ---
 
-  const handleAddBookmark = async (title: string, url: string, category: string) => {
+  const handleAddBookmark = async (title: string, url: string, category: string, tags: string[]) => {
     setIsAdding(true);
     // Simulate network delay for better UX feel
     await new Promise(r => setTimeout(r, 600));
@@ -93,6 +99,7 @@ const App: React.FC = () => {
       title,
       url,
       category,
+      tags,
       status: 'active',
       order: bookmarks.length,
       createdAt: Date.now(),
@@ -103,6 +110,28 @@ const App: React.FC = () => {
     setBookmarks(updated);
     setIsAdding(false);
     setIsAddModalOpen(false);
+  };
+
+  const handleUpdateBookmark = async (id: string, updates: { title: string, url: string, category: string, tags: string[] }) => {
+    // Find original bookmark to preserve other fields
+    const original = bookmarks.find(b => b.id === id);
+    if (!original) return;
+
+    // Check if URL changed, update preview if so
+    let preview = original.preview;
+    if (original.url !== updates.url) {
+        preview = getScreenshotUrl(updates.url);
+    }
+
+    const updatedBookmark: Bookmark = {
+        ...original,
+        ...updates,
+        preview
+    };
+
+    const updatedList = updateBookmarkInStorage(updatedBookmark);
+    setBookmarks(updatedList);
+    setEditingBookmark(null); // Close modal
   };
 
   const handleDeleteBookmark = (id: string) => {
@@ -125,6 +154,7 @@ const App: React.FC = () => {
         title: item.title,
         url: item.url,
         category: 'Uncategorized',
+        tags: [],
         status: 'active',
         order: currentOrder + index,
         createdAt: Date.now(),
@@ -229,7 +259,8 @@ const App: React.FC = () => {
     const q = searchQuery.toLowerCase();
     return list.filter(b => 
       b.title.toLowerCase().includes(q) || 
-      b.url.toLowerCase().includes(q)
+      b.url.toLowerCase().includes(q) ||
+      b.tags?.some(tag => tag.toLowerCase().includes(q))
     );
   };
 
@@ -409,6 +440,7 @@ const App: React.FC = () => {
                                 key={bookmark.id} 
                                 bookmark={bookmark} 
                                 onDelete={handleDeleteBookmark}
+                                onEdit={(b) => setEditingBookmark(b)}
                             />
                         ))}
                         
@@ -470,6 +502,7 @@ const App: React.FC = () => {
                                         key={bookmark.id}
                                         bookmark={bookmark}
                                         onDelete={handleDeleteBookmark}
+                                        onEdit={(b) => setEditingBookmark(b)}
                                         variant="list"
                                     />
                                 ))}
@@ -486,6 +519,14 @@ const App: React.FC = () => {
         onClose={() => setIsAddModalOpen(false)}
         onAdd={handleAddBookmark}
         isProcessing={isAdding}
+        existingCategories={availableCategories}
+      />
+      
+      <EditBookmarkModal
+        isOpen={!!editingBookmark}
+        onClose={() => setEditingBookmark(null)}
+        bookmark={editingBookmark}
+        onSave={handleUpdateBookmark}
         existingCategories={availableCategories}
       />
 

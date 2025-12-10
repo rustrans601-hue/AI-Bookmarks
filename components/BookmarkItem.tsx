@@ -1,16 +1,18 @@
+
 import React, { useState, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ExternalLink, Trash2, GripVertical, CheckCircle, AlertCircle, MoreHorizontal, Copy } from 'lucide-react';
+import { ExternalLink, Trash2, GripVertical, CheckCircle, AlertCircle, Copy, Pencil } from 'lucide-react';
 import { Bookmark } from '../types';
 
 interface Props {
   bookmark: Bookmark;
   onDelete: (id: string) => void;
+  onEdit: (bookmark: Bookmark) => void;
   variant?: 'card' | 'list';
 }
 
-export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, variant = 'card' }) => {
+export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, onEdit, variant = 'card' }) => {
   const {
     attributes,
     listeners,
@@ -81,10 +83,25 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, variant = 'c
              <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-700 hover:text-blue-600 font-medium truncate block">
                 {bookmark.title}
              </a>
+             {/* Tags in list view */}
+             {bookmark.tags && bookmark.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-0.5">
+                  {bookmark.tags.map(tag => (
+                    <span key={tag} className="text-[10px] text-gray-400">#{tag}</span>
+                  ))}
+                </div>
+             )}
           </div>
         </div>
         
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+            <button 
+                onClick={() => onEdit(bookmark)}
+                className="text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-gray-100"
+                title="Edit"
+            >
+                <Pencil size={14} />
+            </button>
             <button 
                 onClick={handleCopyUrl}
                 className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
@@ -125,7 +142,10 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, variant = 'c
       style={style}
       className="group relative bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col"
     >
-      <div className="h-32 bg-gray-100 relative overflow-hidden flex items-center justify-center">
+      <div 
+        className="h-32 bg-gray-100 relative overflow-hidden flex items-center justify-center cursor-pointer"
+        onClick={() => onEdit(bookmark)}
+      >
         <img 
           src={imageSrc} 
           alt={bookmark.title}
@@ -144,7 +164,7 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, variant = 'c
         
         {/* Category Badge */}
         <div className="absolute top-2 left-2 z-10">
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-600/90 text-white shadow-sm backdrop-blur-sm">
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-600/90 text-white shadow-sm backdrop-blur-sm hover:bg-blue-700 transition-colors">
                 {bookmark.category}
             </span>
         </div>
@@ -171,6 +191,17 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, variant = 'c
                 }
               })()}
             </a>
+            
+            {/* Tags Display */}
+            {bookmark.tags && bookmark.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                    {bookmark.tags.map((tag, idx) => (
+                        <span key={idx} className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                            #{tag}
+                        </span>
+                    ))}
+                </div>
+            )}
           </div>
           
           <div 
@@ -182,7 +213,14 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, variant = 'c
           </div>
         </div>
 
-        <div className="mt-4 pt-3 border-t border-gray-50 flex justify-end">
+        <div className="mt-4 pt-3 border-t border-gray-50 flex justify-end gap-1">
+            <button 
+                onClick={() => onEdit(bookmark)}
+                className="text-gray-400 hover:text-blue-600 transition-colors p-1"
+                title="Edit Bookmark"
+            >
+                <Pencil size={16} />
+            </button>
             <button 
                 onClick={() => onDelete(bookmark.id)}
                 className="text-gray-400 hover:text-red-500 transition-colors p-1"

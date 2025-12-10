@@ -4,6 +4,7 @@ export interface Bookmark {
   title: string;
   url: string;
   category: string;
+  tags: string[];
   status: 'active' | 'inactive';
   order: number;
   preview?: string;
