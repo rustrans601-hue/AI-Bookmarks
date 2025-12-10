@@ -14,6 +14,7 @@ export const AddBookmarkModal: React.FC<Props> = ({ isOpen, onClose, onAdd, isPr
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [category, setCategory] = useState<CategoryType>('Uncategorized');
+  const [customCategory, setCustomCategory] = useState('');
   const [isCustomCategory, setIsCustomCategory] = useState(false);
 
   if (!isOpen) return null;
@@ -21,10 +22,21 @@ export const AddBookmarkModal: React.FC<Props> = ({ isOpen, onClose, onAdd, isPr
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !url) return;
-    await onAdd(title, url, category);
+
+    const finalCategory = isCustomCategory ? customCategory.trim() : category;
+    if (!finalCategory) {
+        // Simple validation: don't allow empty new category
+        alert("Please enter a name for the new category.");
+        return;
+    }
+
+    await onAdd(title, url, finalCategory);
+
+    // Reset state
     setTitle('');
     setUrl('');
     setCategory('Uncategorized');
+    setCustomCategory('');
     setIsCustomCategory(false);
   };
 
@@ -54,8 +66,9 @@ export const AddBookmarkModal: React.FC<Props> = ({ isOpen, onClose, onAdd, isPr
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+            <label htmlFor="title-input" className="block text-sm font-medium text-gray-700 mb-1">Title</label>
             <input
+              id="title-input"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -66,8 +79,9 @@ export const AddBookmarkModal: React.FC<Props> = ({ isOpen, onClose, onAdd, isPr
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
+            <label htmlFor="url-input" className="block text-sm font-medium text-gray-700 mb-1">URL</label>
             <input
+              id="url-input"
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -77,9 +91,10 @@ export const AddBookmarkModal: React.FC<Props> = ({ isOpen, onClose, onAdd, isPr
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+            <label htmlFor="category-select" className="block text-sm font-medium text-gray-700 mb-1">Category</label>
             {!isCustomCategory ? (
                 <select
+                id="category-select"
                 value={category}
                 onChange={handleCategoryChange}
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
@@ -93,15 +108,15 @@ export const AddBookmarkModal: React.FC<Props> = ({ isOpen, onClose, onAdd, isPr
                 <div className="flex gap-2">
                     <input 
                         type="text"
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
+                        value={customCategory}
+                        onChange={(e) => setCustomCategory(e.target.value)}
                         placeholder="Type new category name..."
                         className="flex-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                         autoFocus
                     />
                     <button 
                         type="button" 
-                        onClick={() => { setIsCustomCategory(false); setCategory('Uncategorized'); }}
+                        onClick={() => { setIsCustomCategory(false); setCustomCategory(''); setCategory('Uncategorized'); }}
                         className="px-3 py-2 text-gray-500 hover:text-gray-700 bg-gray-100 rounded-lg"
                     >
                         Cancel

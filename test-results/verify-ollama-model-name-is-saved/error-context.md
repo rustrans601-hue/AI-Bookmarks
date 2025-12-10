@@ -1,0 +1,200 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - img [ref=e9]
+        - heading "AI Bookmarks" [level=1] [ref=e14]
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - img [ref=e17]
+          - textbox "Search..." [ref=e20]
+        - generic [ref=e21]:
+          - button "Grid View" [ref=e22] [cursor=pointer]:
+            - img [ref=e23]
+          - button "Board View" [ref=e25] [cursor=pointer]:
+            - img [ref=e26]
+        - button "Settings" [ref=e31] [cursor=pointer]:
+          - img [ref=e32]
+        - button "Import / Export" [ref=e35] [cursor=pointer]:
+          - img [ref=e36]
+        - button "Check Link Status" [ref=e39] [cursor=pointer]:
+          - img [ref=e40]
+        - button "AI Organize" [ref=e45] [cursor=pointer]:
+          - img [ref=e46]
+          - text: AI Organize
+        - button "Add New" [ref=e49] [cursor=pointer]:
+          - img [ref=e50]
+          - generic [ref=e51]: Add New
+  - main [ref=e52]:
+    - generic [ref=e53]:
+      - button "All Bookmarks" [ref=e54] [cursor=pointer]
+      - button "Backend" [ref=e55] [cursor=pointer]
+      - button "Design" [ref=e56] [cursor=pointer]
+      - button "Frontend" [ref=e57] [cursor=pointer]
+    - generic [ref=e58]:
+      - heading "All (5)" [level=2] [ref=e59]:
+        - img [ref=e60]
+        - text: All (5)
+      - generic [ref=e61]: Drag items to reorder
+    - generic [ref=e62]:
+      - generic [ref=e63]:
+        - generic [ref=e64]:
+          - img "React Documentation" [ref=e65]
+          - generic [ref=e67]:
+            - img [ref=e68]
+            - text: Active
+          - generic [ref=e71]: Frontend
+        - generic [ref=e72]:
+          - generic [ref=e73]:
+            - generic [ref=e74]:
+              - heading "React Documentation" [level=3] [ref=e75]
+              - link "react.dev" [ref=e76] [cursor=pointer]:
+                - /url: https://react.dev/
+                - img [ref=e77]
+                - text: react.dev
+            - button [ref=e81]:
+              - img [ref=e82]
+          - button "Delete Bookmark" [ref=e90] [cursor=pointer]:
+            - img [ref=e91]
+      - generic [ref=e94]:
+        - generic [ref=e95]:
+          - img "Vue.js Guide" [ref=e96]
+          - generic [ref=e98]:
+            - img [ref=e99]
+            - text: Active
+          - generic [ref=e102]: Frontend
+        - generic [ref=e103]:
+          - generic [ref=e104]:
+            - generic [ref=e105]:
+              - heading "Vue.js Guide" [level=3] [ref=e106]
+              - link "vuejs.org" [ref=e107] [cursor=pointer]:
+                - /url: https://vuejs.org/
+                - img [ref=e108]
+                - text: vuejs.org
+            - button [ref=e112]:
+              - img [ref=e113]
+          - button "Delete Bookmark" [ref=e121] [cursor=pointer]:
+            - img [ref=e122]
+      - generic [ref=e125]:
+        - generic [ref=e126]:
+          - img "Broken Link Example" [ref=e127]
+          - generic [ref=e129]:
+            - img [ref=e130]
+            - text: Broken
+          - generic [ref=e132]: Backend
+        - generic [ref=e133]:
+          - generic [ref=e134]:
+            - generic [ref=e135]:
+              - heading "Broken Link Example" [level=3] [ref=e136]
+              - link "broken-url-404.com" [ref=e137] [cursor=pointer]:
+                - /url: https://broken-url-404.com/
+                - img [ref=e138]
+                - text: broken-url-404.com
+            - button [ref=e142]:
+              - img [ref=e143]
+          - button "Delete Bookmark" [ref=e151] [cursor=pointer]:
+            - img [ref=e152]
+      - generic [ref=e155]:
+        - generic [ref=e156]:
+          - img "Firebase Firestore Docs" [ref=e157]
+          - generic [ref=e159]:
+            - img [ref=e160]
+            - text: Active
+          - generic [ref=e163]: Backend
+        - generic [ref=e164]:
+          - generic [ref=e165]:
+            - generic [ref=e166]:
+              - heading "Firebase Firestore Docs" [level=3] [ref=e167]
+              - link "firebase.google.com" [ref=e168] [cursor=pointer]:
+                - /url: https://firebase.google.com/docs/firestore
+                - img [ref=e169]
+                - text: firebase.google.com
+            - button [ref=e173]:
+              - img [ref=e174]
+          - button "Delete Bookmark" [ref=e182] [cursor=pointer]:
+            - img [ref=e183]
+      - generic [ref=e186]:
+        - generic [ref=e187]:
+          - img "Modern CSS Layouts" [ref=e188]
+          - generic [ref=e190]:
+            - img [ref=e191]
+            - text: Active
+          - generic [ref=e194]: Design
+        - generic [ref=e195]:
+          - generic [ref=e196]:
+            - generic [ref=e197]:
+              - heading "Modern CSS Layouts" [level=3] [ref=e198]
+              - link "web.dev" [ref=e199] [cursor=pointer]:
+                - /url: https://web.dev/
+                - img [ref=e200]
+                - text: web.dev
+            - button [ref=e204]:
+              - img [ref=e205]
+          - button "Delete Bookmark" [ref=e213] [cursor=pointer]:
+            - img [ref=e214]
+    - status [ref=e217]
+  - generic [ref=e219]:
+    - generic [ref=e220]:
+      - heading "Settings" [level=2] [ref=e221]
+      - button [ref=e222] [cursor=pointer]:
+        - img [ref=e223]
+    - generic [ref=e226]:
+      - generic [ref=e227]:
+        - generic [ref=e228]: AI Provider
+        - generic [ref=e229]:
+          - button "OpenRouter" [ref=e230] [cursor=pointer]:
+            - img [ref=e231]
+            - text: OpenRouter
+          - button "Google Gemini" [ref=e234] [cursor=pointer]:
+            - img [ref=e235]
+            - text: Google Gemini
+          - button "Local (Ollama)" [active] [ref=e237] [cursor=pointer]:
+            - img [ref=e238]
+            - text: Local (Ollama)
+      - generic [ref=e240]:
+        - heading "Ollama Configuration" [level=3] [ref=e242]:
+          - img [ref=e243]
+          - text: Ollama Configuration
+        - generic [ref=e245]:
+          - generic [ref=e246]: Base URL
+          - textbox "http://localhost:11434" [ref=e247]
+          - paragraph [ref=e248]: Default is http://localhost:11434
+        - generic [ref=e249]:
+          - generic [ref=e250]:
+            - generic [ref=e251]: Model Name
+            - button "Fetch Models" [ref=e252] [cursor=pointer]:
+              - img [ref=e253]
+              - text: Fetch Models
+          - textbox "llama3" [ref=e259]
+      - generic [ref=e260]:
+        - heading "Performance & Rate Limits" [level=3] [ref=e261]:
+          - img [ref=e262]
+          - text: Performance & Rate Limits
+        - generic [ref=e265]:
+          - generic [ref=e266]:
+            - generic [ref=e267]: Batch Size
+            - generic [ref=e268]: 1 request
+          - slider [ref=e269] [cursor=pointer]: "1"
+          - paragraph [ref=e270]: Lower this if you hit rate limits frequently.
+        - generic [ref=e271]:
+          - generic [ref=e272]:
+            - generic [ref=e273]:
+              - img [ref=e274]
+              - text: Delay Between Batches
+            - generic [ref=e277]: 5 seconds
+          - slider [ref=e278] [cursor=pointer]: "5"
+          - generic [ref=e279]:
+            - generic [ref=e280]: 1s
+            - generic [ref=e281]: 15m
+            - generic [ref=e282]: 30m
+            - generic [ref=e283]: 45m
+            - generic [ref=e284]: 60m
+          - paragraph [ref=e285]: Increase this significantly (e.g. 5-10m) for free API tiers.
+      - button "Save Settings" [ref=e286] [cursor=pointer]:
+        - img [ref=e287]
+        - text: Save Settings
+      - paragraph [ref=e292]: Your API key is stored locally in your browser.
+```

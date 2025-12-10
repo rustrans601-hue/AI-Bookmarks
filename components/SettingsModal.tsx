@@ -43,10 +43,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
       setOllamaBaseUrl(settings.ollamaBaseUrl);
       setOllamaModel(settings.ollamaModel);
       
-      // Initialize list with current model if set
-      if (settings.ollamaModel) {
-          setOllamaModelsList([{ id: settings.ollamaModel, name: settings.ollamaModel }]);
-      }
+      setOllamaModelsList([]);
 
       setBatchSize(settings.batchSize || 1);
       setDelaySeconds((settings.delayBetweenBatches || 5000) / 1000);
