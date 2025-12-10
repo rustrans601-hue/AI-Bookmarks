@@ -4,12 +4,13 @@
   "description": "A smart bookmark manager powered by Google Gemini",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 3000",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on tcp:5173 && electron .\"",
     "electron:build": "vite build && electron-builder",
-    "test": "vitest"
+    "test": "vitest",
+    "test:e2e": "playwright test -c verification"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -21,6 +22,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.45.3",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.0.0",
