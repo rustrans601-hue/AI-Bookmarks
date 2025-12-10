@@ -1,20 +1,67 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
-# Run and deploy your AI Studio app
+# AI Bookmark Manager
 
-This contains everything you need to run your app locally.
+A smart, modern bookmark manager that uses AI (Google Gemini, OpenRouter, or local Ollama) to automatically categorize your links, featuring a modern UI and drag-and-drop organization.
 
-View your app in AI Studio: https://ai.studio/apps/drive/19AN6j0s41vtxEcmnuPBVs4Z_Gc7Y6sA5
+![App Screenshot](screenshot.png)
 
-## Run Locally
+> *Tip: Upload an image named `screenshot.png` to your repository root to see it here.*
 
-**Prerequisites:**  Node.js
+## Features
 
+- 🧠 **AI-Powered Categorization**: Automatically organizes links into categories using LLMs.
+- 🏷️ **Smart Tagging**: Add and manage tags for better filtering.
+- 🔌 **Multiple AI Providers**: Support for OpenRouter, Google Gemini, and local Ollama.
+- 🖱️ **Drag & Drop**: Intuitive grid and board layouts.
+- 📥 **Universal Import**: Import bookmarks from JSON, CSV, Excel, and PDF.
+- 📱 **Responsive Design**: Works great on desktop and mobile.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v18+)
+- npm or yarn
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/ai-bookmark-manager.git
+   cd ai-bookmark-manager
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Run the development server**
+   ```bash
+   npm run dev
+   ```
+
+4. **Run as Desktop App (Electron)**
+   ```bash
+   npm run electron:dev
+   ```
+
+## Configuration
+
+Click the **Settings (⚙️)** icon in the top right corner to configure your AI provider:
+
+- **OpenRouter**: Access to free models like Gemini Pro or paid models like GPT-4.
+- **Google Gemini**: Use your Google API Key directly.
+- **Ollama**: Connect to a local instance (default: `http://localhost:11434`).
+
+## Building
+
+To build the application for production (Desktop):
+
+```bash
+npm run electron:build
+```
+
+## License
+
+MIT
