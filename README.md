@@ -5,7 +5,7 @@ A smart, modern bookmark manager that uses AI (Google Gemini, OpenRouter, or loc
 
 ![App Screenshot](screenshot.png)
 
-> *Tip: Upload an image named `screenshot.png` to your repository root to see it here.*
+
 
 ## Features
 
