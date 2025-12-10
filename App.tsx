@@ -26,7 +26,9 @@ import {
   ArrowDownUp,
   LayoutTemplate,
   Grid,
-  Square
+  Square,
+  Tag,
+  X
 } from 'lucide-react';
 
 import { Bookmark, DEFAULT_CATEGORIES } from './types';
@@ -42,6 +44,7 @@ import { ImportExportModal } from './components/ImportExportModal';
 const App: React.FC = () => {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'board'>('grid');
   
@@ -252,6 +255,15 @@ const App: React.FC = () => {
     saveBookmarks(updated);
   };
 
+  const handleTagClick = (tag: string) => {
+    setSelectedTag(tag);
+    setSelectedCategory('All'); // Reset category to ensure global search/filter
+  };
+
+  const clearTagFilter = () => {
+    setSelectedTag(null);
+  };
+
   // --- Filtered Data ---
 
   const getBookmarksBySearch = (list: Bookmark[]) => {
@@ -266,11 +278,16 @@ const App: React.FC = () => {
 
   const filteredGridBookmarks = useMemo(() => {
     let result = bookmarks;
-    if (selectedCategory !== 'All') {
-      result = result.filter(b => b.category === selectedCategory);
+    
+    // If tag is selected, it overrides category filtering
+    if (selectedTag) {
+        result = result.filter(b => b.tags?.includes(selectedTag));
+    } else if (selectedCategory !== 'All') {
+        result = result.filter(b => b.category === selectedCategory);
     }
+    
     return getBookmarksBySearch(result);
-  }, [bookmarks, selectedCategory, searchQuery]);
+  }, [bookmarks, selectedCategory, searchQuery, selectedTag]);
 
 
   return (
@@ -389,7 +406,8 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
         
-        {viewMode === 'grid' && (
+        {/* Category Filters (Hidden if Tag View is active to avoid confusion) */}
+        {!selectedTag && viewMode === 'grid' && (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-6">
                 <button
                     onClick={() => setSelectedCategory('All')}
@@ -410,16 +428,42 @@ const App: React.FC = () => {
             </div>
         )}
 
+        {/* Tag View Banner */}
+        {selectedTag && (
+            <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6 shadow-sm">
+                <div className="flex items-center gap-3">
+                    <div className="bg-blue-600 p-2 rounded-lg text-white">
+                        <Tag size={20} />
+                    </div>
+                    <div>
+                        <h3 className="text-blue-900 font-semibold">Filtering by tag</h3>
+                        <div className="text-blue-700 font-bold text-lg">#{selectedTag}</div>
+                    </div>
+                </div>
+                <button 
+                    onClick={clearTagFilter}
+                    className="p-2 hover:bg-blue-100 rounded-full text-blue-600 transition-colors"
+                    title="Clear tag filter"
+                >
+                    <X size={24} />
+                </button>
+            </div>
+        )}
+
         <div className="flex justify-between items-center mb-6">
             <h2 className="text-gray-700 font-medium flex items-center gap-2">
                 <ListFilter size={18} />
-                {viewMode === 'grid' ? (
-                    `${selectedCategory} (${filteredGridBookmarks.length})`
+                {selectedTag ? (
+                    `Found ${filteredGridBookmarks.length} result(s)`
                 ) : (
-                    `All Categories (${availableCategories.length})`
+                    viewMode === 'grid' ? (
+                        `${selectedCategory} (${filteredGridBookmarks.length})`
+                    ) : (
+                        `All Categories (${availableCategories.length})`
+                    )
                 )}
             </h2>
-            {selectedCategory === 'All' && !searchQuery && viewMode === 'grid' && (
+            {selectedCategory === 'All' && !searchQuery && !selectedTag && viewMode === 'grid' && (
                 <span className="text-xs text-gray-400 italic">Drag items to reorder</span>
             )}
         </div>
@@ -441,6 +485,7 @@ const App: React.FC = () => {
                                 bookmark={bookmark} 
                                 onDelete={handleDeleteBookmark}
                                 onEdit={(b) => setEditingBookmark(b)}
+                                onTagClick={handleTagClick}
                             />
                         ))}
                         
@@ -450,13 +495,28 @@ const App: React.FC = () => {
                                     <Search className="text-gray-400" size={32} />
                                 </div>
                                 <h3 className="text-lg font-medium text-gray-900">No bookmarks found</h3>
-                                <p className="text-gray-500 mt-1">Try adjusting your search or add a new bookmark.</p>
-                                <button 
-                                    onClick={() => setIsAddModalOpen(true)}
-                                    className="mt-4 px-4 py-2 bg-blue-50 text-blue-600 font-medium rounded-lg hover:bg-blue-100 transition-colors"
-                                >
-                                    Add your first bookmark
-                                </button>
+                                <p className="text-gray-500 mt-1">
+                                    {selectedTag 
+                                        ? `No bookmarks with tag #${selectedTag}` 
+                                        : "Try adjusting your search or add a new bookmark."
+                                    }
+                                </p>
+                                {!selectedTag && (
+                                    <button 
+                                        onClick={() => setIsAddModalOpen(true)}
+                                        className="mt-4 px-4 py-2 bg-blue-50 text-blue-600 font-medium rounded-lg hover:bg-blue-100 transition-colors"
+                                    >
+                                        Add your first bookmark
+                                    </button>
+                                )}
+                                {selectedTag && (
+                                    <button 
+                                        onClick={clearTagFilter}
+                                        className="mt-4 px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                                    >
+                                        Clear Filter
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -467,7 +527,13 @@ const App: React.FC = () => {
         {viewMode === 'board' && (
             <div className="columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-6 space-y-6">
                 {availableCategories.map((cat) => {
-                    const catBookmarks = getBookmarksBySearch(bookmarks).filter(b => b.category === cat);
+                    // Filter based on category AND global tag/search filters
+                    const catBookmarks = getBookmarksBySearch(bookmarks).filter(b => {
+                         const matchCat = b.category === cat;
+                         const matchTag = selectedTag ? b.tags?.includes(selectedTag) : true;
+                         return matchCat && matchTag;
+                    });
+                    
                     if (catBookmarks.length === 0) return null;
 
                     const colors = [
@@ -503,6 +569,7 @@ const App: React.FC = () => {
                                         bookmark={bookmark}
                                         onDelete={handleDeleteBookmark}
                                         onEdit={(b) => setEditingBookmark(b)}
+                                        onTagClick={handleTagClick}
                                         variant="list"
                                     />
                                 ))}

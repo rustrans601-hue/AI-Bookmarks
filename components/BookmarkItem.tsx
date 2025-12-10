@@ -9,10 +9,11 @@ interface Props {
   bookmark: Bookmark;
   onDelete: (id: string) => void;
   onEdit: (bookmark: Bookmark) => void;
+  onTagClick?: (tag: string) => void;
   variant?: 'card' | 'list';
 }
 
-export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, onEdit, variant = 'card' }) => {
+export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, onEdit, onTagClick, variant = 'card' }) => {
   const {
     attributes,
     listeners,
@@ -65,6 +66,13 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, onEdit, vari
     navigator.clipboard.writeText(bookmark.url);
   };
 
+  const handleTagClickInternal = (e: React.MouseEvent, tag: string) => {
+    e.stopPropagation();
+    if (onTagClick) {
+        onTagClick(tag);
+    }
+  };
+
   // --- LIST VARIANT ---
   if (variant === 'list') {
     // For list view, we prioritize the favicon (Level 2) logic directly if possible, or fallbacks
@@ -87,7 +95,13 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, onEdit, vari
              {bookmark.tags && bookmark.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-0.5">
                   {bookmark.tags.map(tag => (
-                    <span key={tag} className="text-[10px] text-gray-400">#{tag}</span>
+                    <span 
+                        key={tag} 
+                        onClick={(e) => handleTagClickInternal(e, tag)}
+                        className="text-[10px] text-gray-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer px-1 rounded transition-colors"
+                    >
+                        #{tag}
+                    </span>
                   ))}
                 </div>
              )}
@@ -196,7 +210,11 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, onEdit, vari
             {bookmark.tags && bookmark.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
                     {bookmark.tags.map((tag, idx) => (
-                        <span key={idx} className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                        <span 
+                            key={idx} 
+                            onClick={(e) => handleTagClickInternal(e, tag)}
+                            className="text-[10px] text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-800 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                        >
                             #{tag}
                         </span>
                     ))}
