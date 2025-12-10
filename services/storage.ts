@@ -1,3 +1,4 @@
+
 import { Bookmark, AISettings, DEFAULT_AI_SETTINGS } from '../types';
 
 const STORAGE_KEY = 'ai_bookmarks_data';
@@ -132,6 +133,7 @@ export const getAISettings = (): AISettings => {
       if (settings.delayBetweenBatches === undefined) settings.delayBetweenBatches = DEFAULT_AI_SETTINGS.delayBetweenBatches;
       if (!settings.ollamaBaseUrl) settings.ollamaBaseUrl = DEFAULT_AI_SETTINGS.ollamaBaseUrl;
       if (!settings.ollamaModel) settings.ollamaModel = DEFAULT_AI_SETTINGS.ollamaModel;
+      if (settings.ollamaApiKey === undefined) settings.ollamaApiKey = DEFAULT_AI_SETTINGS.ollamaApiKey;
 
     } catch {
       settings = DEFAULT_AI_SETTINGS;

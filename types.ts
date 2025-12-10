@@ -1,3 +1,4 @@
+
 export interface Bookmark {
   id: string;
   title: string;
@@ -44,6 +45,7 @@ export interface AISettings {
   // Ollama Settings
   ollamaBaseUrl: string;
   ollamaModel: string;
+  ollamaApiKey: string;
 
   // Performance Settings
   batchSize: number;
@@ -74,6 +76,7 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
   geminiModel: 'gemini-2.0-flash',
   ollamaBaseUrl: 'http://localhost:11434',
   ollamaModel: 'llama3',
+  ollamaApiKey: '',
   batchSize: 1, // Default to 1 for safety
   delayBetweenBatches: 5000, // Default 5 seconds
 };

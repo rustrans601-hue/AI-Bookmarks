@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { X, ShieldCheck, Server, Cpu, Save, Key, ExternalLink, Zap, RefreshCw, Gauge, Clock, HardDrive, AlertTriangle } from 'lucide-react';
 import { getAISettings, saveAISettings } from '../services/storage';
@@ -22,6 +23,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
   // Ollama Settings
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState('');
   const [ollamaModel, setOllamaModel] = useState('');
+  const [ollamaApiKey, setOllamaApiKey] = useState('');
   const [ollamaModelsList, setOllamaModelsList] = useState<{id: string, name: string}[]>([]);
   const [isFetchingOllama, setIsFetchingOllama] = useState(false);
   const [ollamaError, setOllamaError] = useState<string | null>(null);
@@ -40,12 +42,16 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
       setOpenRouterModel(settings.openRouterModel);
       setGeminiApiKey(settings.geminiApiKey);
       setGeminiModel(settings.geminiModel);
-      setOllamaBaseUrl(settings.ollamaBaseUrl);
-      setOllamaModel(settings.ollamaModel);
       
-      // Initialize list with current model if set
-      if (settings.ollamaModel) {
-          setOllamaModelsList([{ id: settings.ollamaModel, name: settings.ollamaModel }]);
+      setOllamaBaseUrl(settings.ollamaBaseUrl);
+      setOllamaApiKey(settings.ollamaApiKey || '');
+      
+      const currentOllamaModel = settings.ollamaModel;
+      setOllamaModel(currentOllamaModel);
+      
+      // Initialize list with current model so it appears in the dropdown immediately
+      if (currentOllamaModel) {
+          setOllamaModelsList([{ id: currentOllamaModel, name: currentOllamaModel }]);
       }
 
       setBatchSize(settings.batchSize || 1);
@@ -97,21 +103,38 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
     setIsFetchingOllama(true);
     setOllamaError(null);
 
+    // Normalize URL helper
+    const normalize = (u: string) => {
+        let clean = u.trim();
+        if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+            clean = `http://${clean}`;
+        }
+        return clean.replace(/\/$/, '');
+    };
+
     const tryFetch = async (url: string) => {
-        const baseUrl = url.replace(/\/$/, '');
-        const response = await fetch(`${baseUrl}/api/tags`);
-        if (!response.ok) throw new Error(`Status: ${response.status}`);
+        const headers: HeadersInit = {};
+        if (ollamaApiKey) {
+            headers['Authorization'] = `Bearer ${ollamaApiKey}`;
+        }
+
+        const response = await fetch(`${url}/api/tags`, { headers });
+        if (!response.ok) throw new Error(`Status: ${response.status} ${response.statusText}`);
         return await response.json();
     };
 
     try {
+        let normalizedUrl = normalize(ollamaBaseUrl);
+        // Update state with normalized URL for better UX
+        setOllamaBaseUrl(normalizedUrl); 
+        
         let data;
         try {
-            data = await tryFetch(ollamaBaseUrl);
+            data = await tryFetch(normalizedUrl);
         } catch (e) {
              // Retry with 127.0.0.1 if localhost failed
-             if (ollamaBaseUrl.includes('localhost')) {
-                const altUrl = ollamaBaseUrl.replace('localhost', '127.0.0.1');
+             if (normalizedUrl.includes('localhost')) {
+                const altUrl = normalizedUrl.replace('localhost', '127.0.0.1');
                 try {
                     data = await tryFetch(altUrl);
                     setOllamaBaseUrl(altUrl); // Update field if successful
@@ -125,19 +148,31 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
         if (data.models && Array.isArray(data.models)) {
             const mapped = data.models.map((m: any) => ({
-                id: m.name,
+                id: m.name, // Usually "model:tag"
                 name: m.name
             }));
+            
+            // If the currently selected model isn't in the new list, add it temporarily
+            // so the select box doesn't break or jump to the first item unexpectedly.
+            if (ollamaModel && !mapped.find(m => m.id === ollamaModel)) {
+                mapped.unshift({ id: ollamaModel, name: `${ollamaModel} (Current)` });
+            }
+
             setOllamaModelsList(mapped);
-            // Auto-select first if none selected
+            
+            // Auto-select first real model if absolutely nothing was selected before
             if (mapped.length > 0 && !ollamaModel) {
                 setOllamaModel(mapped[0].id);
             }
         }
     } catch (error: any) {
         console.error("Failed to fetch Ollama models:", error);
-        if (error.message && error.message.includes('Failed to fetch')) {
-             setOllamaError("Connection failed. Ensure Ollama is running ('ollama serve') and accessible.");
+        if (error.message && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
+             setOllamaError("Connection failed. Check URL, ensure Ollama is running ('ollama serve') or check CORS.");
+        } else if (error.message && error.message.includes('403')) {
+             setOllamaError("Access Forbidden (403). If using Auth, check your token.");
+        } else if (error.message && error.message.includes('404')) {
+             setOllamaError("Not Found (404). Check if Ollama is running on this port.");
         } else {
              setOllamaError(error.message || "Unknown error connecting to Ollama");
         }
@@ -147,6 +182,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
   };
 
   const handleSave = () => {
+    console.log("Saving settings. Ollama Model:", ollamaModel);
     saveAISettings({ 
       provider, 
       openRouterApiKey, 
@@ -155,6 +191,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
       geminiModel,
       ollamaBaseUrl,
       ollamaModel,
+      ollamaApiKey,
       batchSize,
       delayBetweenBatches: delaySeconds * 1000
     });
@@ -249,6 +286,26 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                             className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                         />
                         <p className="text-[10px] text-gray-400">Default is http://localhost:11434</p>
+                    </div>
+
+                    {/* Ollama API Key (Optional) */}
+                    <div className="space-y-2">
+                        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            API Key / Token (Optional)
+                        </label>
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Key size={16} className="text-gray-400" />
+                            </div>
+                            <input 
+                                type="password" 
+                                value={ollamaApiKey}
+                                onChange={(e) => setOllamaApiKey(e.target.value)}
+                                placeholder="Bearer Token (if using auth)"
+                                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                            />
+                        </div>
+                        <p className="text-[10px] text-gray-400">Only required if your Ollama instance uses Authentication.</p>
                     </div>
 
                     {/* Ollama Model Input */}

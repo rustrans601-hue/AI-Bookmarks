@@ -1,3 +1,4 @@
+
 import { getAISettings } from './storage';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -272,17 +273,34 @@ const processChunk = async (
     
     // --- OLLAMA PROVIDER ---
     else if (provider === 'ollama') {
-        let baseUrl = (settings.ollamaBaseUrl || 'http://localhost:11434').replace(/\/$/, '');
+        let baseUrl = (settings.ollamaBaseUrl || 'http://localhost:11434').trim();
+        // Normalize URL to ensure http(s) protocol
+        if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+            baseUrl = `http://${baseUrl}`;
+        }
+        baseUrl = baseUrl.replace(/\/$/, '');
+
         const model = settings.ollamaModel || 'llama3';
+        const apiKey = settings.ollamaApiKey;
+
+        console.log(`[Ollama] Using Model: "${model}" at BaseURL: ${baseUrl}`);
 
         const doFetch = async (url: string) => {
              console.log(`Calling Ollama at ${url} with model ${model}`);
+             
+             const headers: any = {
+                "Content-Type": "application/json",
+                // Origin and Referer are often stripped by Electron main process to bypass CORS,
+                // but Auth headers must be preserved.
+             };
+
+             if (apiKey) {
+                 headers['Authorization'] = `Bearer ${apiKey}`;
+             }
+
              const res = await fetch(`${url}/api/chat`, {
                  method: "POST",
-                 headers: {
-                    "Content-Type": "application/json",
-                    // Origin and Referer are stripped by Electron main process to bypass CORS
-                 },
+                 headers,
                  body: JSON.stringify({
                     model: model,
                     messages: [
