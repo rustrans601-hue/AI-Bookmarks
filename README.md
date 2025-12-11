@@ -5,7 +5,7 @@ A smart, modern bookmark manager that uses AI (Google Gemini, OpenRouter, or loc
 
 ![App Screenshot](screenshot.png)
 
-> *Tip: Create an `assets` folder in your project root and save your screenshot as `screenshot.png` inside it.*
+
 
 ## Features
 
