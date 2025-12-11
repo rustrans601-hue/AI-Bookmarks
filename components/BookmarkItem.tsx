@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -31,6 +30,18 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, onEdit, onTa
     setImageSrc(bookmark.preview || '');
     setFallbackLevel(0);
   }, [bookmark.preview]);
+
+  // Electron shell for opening links externally
+  let shell: any = null;
+  try {
+    shell = window.require ? window.require('electron').shell : require('electron').shell;
+  } catch {}
+
+  const handleOpenExternal = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (shell) shell.openExternal(bookmark.url);
+    else window.open(bookmark.url, '_blank');
+  };
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -125,6 +136,7 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, onEdit, onTa
             </button>
             <a 
                 href={bookmark.url}
+                onClick={handleOpenExternal}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-gray-100"
@@ -192,6 +204,7 @@ export const BookmarkItem: React.FC<Props> = ({ bookmark, onDelete, onEdit, onTa
             </h3>
             <a 
               href={bookmark.url} 
+              onClick={handleOpenExternal}
               target="_blank" 
               rel="noopener noreferrer"
               className="text-xs text-gray-500 hover:text-blue-600 truncate block mt-1 flex items-center gap-1"
