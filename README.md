@@ -3,9 +3,9 @@
 
 A smart, modern bookmark manager that uses AI (Google Gemini, OpenRouter, or local Ollama) to automatically categorize your links, featuring a modern UI and drag-and-drop organization.
 
-![App Screenshot](screenshot.png)
+![App Screenshot 2](assets/screenshot_b.png)
 
-
+> *Tip: Create an `assets` folder in your project root and save your screenshots as `screenshot.png` and `screenshot_b.png` inside it.*
 
 ## Features
 

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, Server, Cpu, Save, Key, ExternalLink, Zap, RefreshCw, Gauge, Clock, HardDrive, AlertTriangle } from 'lucide-react';
+import { X, ShieldCheck, Server, Cpu, Save, Key, ExternalLink, Zap, RefreshCw, Gauge, Clock, HardDrive, AlertTriangle, DatabaseBackup, Archive } from 'lucide-react';
 import { getAISettings, saveAISettings } from '../services/storage';
 import { OPENROUTER_MODELS, GEMINI_MODELS, AIProvider, DEFAULT_AI_SETTINGS } from '../types';
 
@@ -32,6 +32,11 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [batchSize, setBatchSize] = useState<number>(DEFAULT_AI_SETTINGS.batchSize);
   const [delaySeconds, setDelaySeconds] = useState<number>(5);
 
+  // Backup Settings
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
+  const [autoBackupInterval, setAutoBackupInterval] = useState(24);
+  const [lastBackupTime, setLastBackupTime] = useState(0);
+
   const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
@@ -56,6 +61,11 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
       setBatchSize(settings.batchSize || 1);
       setDelaySeconds((settings.delayBetweenBatches || 5000) / 1000);
+
+      setAutoBackupEnabled(settings.autoBackupEnabled);
+      setAutoBackupInterval(settings.autoBackupInterval);
+      setLastBackupTime(settings.lastBackupTime);
+
       setIsSaved(false);
       setOllamaError(null);
     }
@@ -182,7 +192,6 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
   };
 
   const handleSave = () => {
-    console.log("Saving settings. Ollama Model:", ollamaModel);
     saveAISettings({ 
       provider, 
       openRouterApiKey, 
@@ -193,7 +202,10 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
       ollamaModel,
       ollamaApiKey,
       batchSize,
-      delayBetweenBatches: delaySeconds * 1000
+      delayBetweenBatches: delaySeconds * 1000,
+      autoBackupEnabled,
+      autoBackupInterval,
+      lastBackupTime
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
@@ -205,6 +217,11 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return secs > 0 ? `${mins}m ${secs}s` : `${mins} minutes`;
+  };
+
+  const formatLastBackup = (timestamp: number) => {
+    if (!timestamp) return 'Never';
+    return new Date(timestamp).toLocaleString();
   };
 
   if (!isOpen) return null;
@@ -409,6 +426,57 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                         </div>
                     </div>
                 </>
+              )}
+          </div>
+
+          {/* BACKUP SETTINGS */}
+          <div className="bg-white rounded-xl p-4 border border-gray-200 space-y-5">
+              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2 pb-2 border-b border-gray-100">
+                <DatabaseBackup size={18} className="text-purple-600" />
+                Automatic Backup
+              </h3>
+              
+              <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                      <div className={`w-10 h-6 rounded-full p-1 transition-colors cursor-pointer ${autoBackupEnabled ? 'bg-purple-600' : 'bg-gray-200'}`} onClick={() => setAutoBackupEnabled(!autoBackupEnabled)}>
+                          <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${autoBackupEnabled ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                      </div>
+                      <span className="text-sm text-gray-700">Enable Auto-Backup</span>
+                  </div>
+              </div>
+
+              {autoBackupEnabled && (
+                <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
+                    <div className="flex justify-between items-center">
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Archive size={12} /> Backup Interval
+                        </label>
+                        <span className="text-xs font-semibold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+                            Every {autoBackupInterval} hour{autoBackupInterval > 1 ? 's' : ''}
+                        </span>
+                    </div>
+                    <input 
+                        type="range" 
+                        min="1" 
+                        max="168" // 1 week
+                        step="1"
+                        value={autoBackupInterval}
+                        onChange={(e) => setAutoBackupInterval(parseInt(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                    />
+                    <div className="flex justify-between text-[10px] text-gray-400">
+                        <span>1h</span>
+                        <span>12h</span>
+                        <span>24h</span>
+                        <span>48h</span>
+                        <span>1 Week</span>
+                    </div>
+                    
+                    <div className="pt-2 text-xs text-gray-500 flex justify-between border-t border-gray-50 mt-2">
+                        <span>Last backup:</span>
+                        <span className="font-medium text-gray-700">{formatLastBackup(lastBackupTime)}</span>
+                    </div>
+                </div>
               )}
           </div>
 

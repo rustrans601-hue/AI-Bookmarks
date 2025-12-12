@@ -1,9 +1,9 @@
 import { Bookmark } from '../types';
-import * as XLSX from 'xlsx';
+
 // Declare global libraries loaded via script tags
-// declare const window: any;
-// const XLSX = window.XLSX;
-declare const pdfjsLib: any;
+declare const window: any;
+const XLSX = window.XLSX;
+const pdfjsLib = window.pdfjsLib;
 
 const URL_REGEX = /(https?:\/\/[^\s<>"']+)/g;
 
@@ -71,7 +71,7 @@ const parseExcel = async (file: File): Promise<ImportedData[]> => {
     reader.onload = (e) => {
       try {
         const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'array' });
+        const workbook = XLSX.read(data, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
         // Convert to array of arrays to scan all cells
@@ -106,7 +106,7 @@ const parseExcel = async (file: File): Promise<ImportedData[]> => {
       }
     };
     reader.onerror = (error) => reject(error);
-    reader.readAsArrayBuffer(file);
+    reader.readAsBinaryString(file);
   });
 };
 

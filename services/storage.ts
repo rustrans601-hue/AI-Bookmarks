@@ -139,6 +139,11 @@ export const getAISettings = (): AISettings => {
       if (!settings.ollamaBaseUrl) settings.ollamaBaseUrl = DEFAULT_AI_SETTINGS.ollamaBaseUrl;
       if (!settings.ollamaModel) settings.ollamaModel = DEFAULT_AI_SETTINGS.ollamaModel;
       if (settings.ollamaApiKey === undefined) settings.ollamaApiKey = DEFAULT_AI_SETTINGS.ollamaApiKey;
+      
+      // Ensure backup defaults
+      if (settings.autoBackupEnabled === undefined) settings.autoBackupEnabled = DEFAULT_AI_SETTINGS.autoBackupEnabled;
+      if (settings.autoBackupInterval === undefined) settings.autoBackupInterval = DEFAULT_AI_SETTINGS.autoBackupInterval;
+      if (settings.lastBackupTime === undefined) settings.lastBackupTime = 0;
 
     } catch {
       settings = DEFAULT_AI_SETTINGS;

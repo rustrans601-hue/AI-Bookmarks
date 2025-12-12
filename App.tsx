@@ -32,9 +32,9 @@ import {
 } from 'lucide-react';
 
 import { Bookmark, DEFAULT_CATEGORIES } from './types';
-import { getBookmarks, saveBookmarks, addBookmarkToStorage, updateBookmarkInStorage, deleteBookmarkFromStorage, getScreenshotUrl } from './services/storage';
+import { getBookmarks, saveBookmarks, addBookmarkToStorage, updateBookmarkInStorage, deleteBookmarkFromStorage, getScreenshotUrl, getAISettings, saveAISettings } from './services/storage';
 import { organizeBookmarksBatch } from './services/gemini';
-import { ImportedData } from './services/importUtils';
+import { ImportedData, exportToJson } from './services/importUtils';
 import { BookmarkItem } from './components/BookmarkItem';
 import { AddBookmarkModal } from './components/AddBookmarkModal';
 import { EditBookmarkModal } from './components/EditBookmarkModal';
@@ -72,6 +72,39 @@ const App: React.FC = () => {
   useEffect(() => {
     setBookmarks(getBookmarks());
   }, []);
+
+  // --- Auto Backup Logic ---
+  useEffect(() => {
+    if (bookmarks.length === 0) return;
+
+    const checkAndPerformBackup = () => {
+        const settings = getAISettings();
+        if (!settings.autoBackupEnabled) return;
+
+        const now = Date.now();
+        const lastBackup = settings.lastBackupTime || 0;
+        const intervalMs = settings.autoBackupInterval * 60 * 60 * 1000;
+
+        if (now - lastBackup > intervalMs) {
+            console.log("Performing auto-backup...");
+            exportToJson(bookmarks);
+            
+            // Update last backup time
+            saveAISettings({
+                ...settings,
+                lastBackupTime: now
+            });
+        }
+    };
+
+    // Check on startup (after bookmarks load)
+    checkAndPerformBackup();
+
+    // Check periodically (every 10 minutes)
+    const intervalId = setInterval(checkAndPerformBackup, 10 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [bookmarks]);
 
   // --- Derived State: Dynamic Categories ---
   const availableCategories = useMemo(() => {

@@ -1,4 +1,5 @@
 
+
 export interface Bookmark {
   id: string;
   title: string;
@@ -51,6 +52,11 @@ export interface AISettings {
   // Performance Settings
   batchSize: number;
   delayBetweenBatches: number; // in milliseconds
+
+  // Backup Settings
+  autoBackupEnabled: boolean;
+  autoBackupInterval: number; // in hours
+  lastBackupTime: number; // timestamp
 }
 
 export const OPENROUTER_MODELS = [
@@ -80,4 +86,7 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
   ollamaApiKey: '',
   batchSize: 1, // Default to 1 for safety
   delayBetweenBatches: 5000, // Default 5 seconds
+  autoBackupEnabled: false,
+  autoBackupInterval: 24, // Default 24 hours
+  lastBackupTime: 0
 };
