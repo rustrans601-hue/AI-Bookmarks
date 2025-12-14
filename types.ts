@@ -12,17 +12,18 @@ export interface Bookmark {
   createdAt: number;
 }
 
-// Default categories for initialization, but the app now supports dynamic strings
+// The 10 Core Categories defined by the new AI logic
 export const DEFAULT_CATEGORIES = [
-  'Frontend',
-  'Backend',
-  'Design',
-  'Productivity',
-  'News',
-  'Hobby',
+  'Work / Business',
+  'Technology / AI',
+  'Education',
+  'Tools',
+  'Media / Content',
+  'Travel',
+  'Shopping',
   'Finance',
-  'Other',
-  'Uncategorized'
+  'Hobbies',
+  'Personal'
 ];
 
 export type CategoryType = string;

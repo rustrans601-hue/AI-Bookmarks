@@ -2,19 +2,45 @@
 import { getAISettings } from './storage';
 import { GoogleGenAI, Type } from "@google/genai";
 
+const STRICT_CATEGORIES = [
+  "Work / Business",
+  "Technology / AI",
+  "Education",
+  "Tools",
+  "Media / Content",
+  "Travel",
+  "Shopping",
+  "Finance",
+  "Hobbies",
+  "Personal"
+];
+
 const SYSTEM_PROMPT = `
-  You are an expert bookmark organizer. I have a list of bookmarks that need to be categorized.
-  
-  Tasks:
-  1. Analyze the Title and URL of each bookmark.
-  2. Group similar bookmarks together.
-  3. Assign a category name to each bookmark.
-  
-  CRITICAL RULES:
-  1. **The Category Name MUST be in RUSSIAN (Русский язык).** (e.g., "Разработка", "Новости", "Покупки", "Дизайн").
-  2. If a bookmark fits well into one of the existing categories provided in the context, use it.
-  3. If no existing category fits, create a NEW, concise (1-2 words) Russian category name.
-  4. Return ONLY a valid JSON array of objects. Each object must have "id" and "category".
+  You are an expert bookmark classifier. Your goal is to organize bookmarks based on their **semantic meaning**, not just their domain.
+
+  I will provide a list of bookmarks with "title" and "url".
+
+  RULES FOR CATEGORIES:
+  1. You must assign EXACTLY ONE category per bookmark.
+  2. You MUST choose from this strict list of 10 categories:
+     ${JSON.stringify(STRICT_CATEGORIES)}
+  3. Choose the category that best describes the *primary purpose* of the link.
+
+  RULES FOR TAGS:
+  1. Assign 1 to 5 tags per bookmark.
+  2. Tags must represent secondary meanings, specific topics, or technologies.
+  3. Tags must be short (1-2 words), lowercase, and in English.
+  4. DO NOT use abstract tags like "interesting", "misc", "other".
+  5. DO NOT duplicate the category name in the tags.
+
+  EXAMPLE:
+  Input: { "title": "OpenAI API Docs", "url": "platform.openai.com" }
+  Output: { 
+    "category": "Technology / AI", 
+    "tags": ["llm", "api", "developer", "documentation"] 
+  }
+
+  Return ONLY a valid JSON array of objects with fields: "id", "category", "tags".
 `;
 
 const MAX_RETRIES = 5;
@@ -34,9 +60,9 @@ const delay = (ms: number, signal?: AbortSignal) => new Promise<void>(resolve =>
 
 export const organizeBookmarksBatch = async (
   bookmarks: { id: string; title: string; url: string }[],
-  existingCategories: string[],
+  existingCategories: string[], // Kept for signature compatibility but ignored in favor of STRICT_CATEGORIES
   signal?: AbortSignal
-): Promise<{ id: string; category: string }[]> => {
+): Promise<{ id: string; category: string; tags: string[] }[]> => {
   if (bookmarks.length === 0) return [];
 
   const settings = getAISettings();
@@ -48,9 +74,9 @@ export const organizeBookmarksBatch = async (
     chunks.push(bookmarks.slice(i, i + batchSize));
   }
 
-  console.log(`[v5] Starting AI organization: ${bookmarks.length} bookmarks. Batch Size: ${batchSize}. Delay: ${delayMs}ms.`);
+  console.log(`[v6] Starting AI organization: ${bookmarks.length} bookmarks. Batch Size: ${batchSize}. Delay: ${delayMs}ms.`);
   
-  let allResults: { id: string; category: string }[] = [];
+  let allResults: { id: string; category: string; tags: string[] }[] = [];
 
   for (let i = 0; i < chunks.length; i++) {
     // Check for abort before processing chunk
@@ -63,7 +89,7 @@ export const organizeBookmarksBatch = async (
     try {
       console.log(`Processing chunk ${i + 1}/${chunks.length} (${chunk.length} items)...`);
       // Use the retry wrapper with signal
-      const chunkResults = await processChunkWithRetry(chunk, existingCategories, 0, signal);
+      const chunkResults = await processChunkWithRetry(chunk, 0, signal);
       allResults = [...allResults, ...chunkResults];
       
       // Delay between chunks to be polite to APIs and avoid rate limits
@@ -99,21 +125,19 @@ export const organizeBookmarksBatch = async (
 // Wrapper to handle retries and fallback
 const processChunkWithRetry = async (
     chunk: { id: string; title: string; url: string }[],
-    existingCategories: string[],
     retryCount = 0,
     signal?: AbortSignal
-): Promise<{ id: string; category: string }[]> => {
+): Promise<{ id: string; category: string; tags: string[] }[]> => {
     if (signal?.aborted) throw new Error("Aborted by user");
 
     try {
-        return await processChunk(chunk, existingCategories, signal);
+        return await processChunk(chunk, signal);
     } catch (error: any) {
         if (signal?.aborted || error.name === 'AbortError') throw new Error("Aborted by user");
 
         const errorMessage = (error instanceof Error ? error.message : String(error)).toLowerCase();
         
         // Critical Errors - DO NOT RETRY
-        // Check for 401, 403, "Unauthorized", "Forbidden", "Invalid Key"
         const isAuthError = 
             errorMessage.includes('401') || 
             errorMessage.includes('unauthorized') || 
@@ -135,7 +159,7 @@ const processChunkWithRetry = async (
         if (settings.provider === 'openrouter' && (isProviderError || isRateLimit) && settings.geminiApiKey) {
             console.warn("OpenRouter failed or rate limited. Attempting fallback to Direct Gemini API...");
             try {
-                return await callDirectGemini(settings.geminiApiKey, 'gemini-2.0-flash', chunk, existingCategories);
+                return await callDirectGemini(settings.geminiApiKey, 'gemini-2.0-flash', chunk);
             } catch (fallbackError) {
                 console.error("Fallback to Gemini also failed:", fallbackError);
             }
@@ -155,7 +179,7 @@ const processChunkWithRetry = async (
             
             // Pass signal to delay to allow interruption
             await delay(waitTime, signal);
-            return processChunkWithRetry(chunk, existingCategories, retryCount + 1, signal);
+            return processChunkWithRetry(chunk, retryCount + 1, signal);
         }
 
         throw error;
@@ -166,11 +190,10 @@ const processChunkWithRetry = async (
 const callDirectGemini = async (
     apiKey: string, 
     model: string, 
-    bookmarksChunk: any[], 
-    existingCategories: string[]
+    bookmarksChunk: any[]
 ): Promise<any[]> => {
     const ai = new GoogleGenAI({ apiKey });
-    const userPrompt = generateUserPrompt(bookmarksChunk, existingCategories);
+    const userPrompt = JSON.stringify(bookmarksChunk);
     
     const response = await ai.models.generateContent({
         model: model,
@@ -184,27 +207,16 @@ const callDirectGemini = async (
                     type: Type.OBJECT,
                     properties: {
                         id: { type: Type.STRING },
-                        category: { type: Type.STRING }
+                        category: { type: Type.STRING },
+                        tags: { type: Type.ARRAY, items: { type: Type.STRING } }
                     },
-                    required: ["id", "category"]
+                    required: ["id", "category", "tags"]
                 }
             }
         },
     });
 
     return parseResponse(response.text || '');
-};
-
-const generateUserPrompt = (chunk: any[], existingCategories: string[]) => {
-    const validExisting = existingCategories.filter(c => c !== 'Uncategorized' && c !== 'Other');
-    const existingCatsStr = validExisting.length > 0 ? `Existing categories to consider: [${validExisting.join(', ')}]` : '';
-    
-    return `
-      ${existingCatsStr}
-      
-      Bookmarks to organize:
-      ${JSON.stringify(chunk)}
-    `;
 };
 
 const parseResponse = (jsonStr: string): any[] => {
@@ -220,8 +232,12 @@ const parseResponse = (jsonStr: string): any[] => {
     try {
         const result = JSON.parse(cleanJson);
         const arrayResult = Array.isArray(result) ? result : (result.items || []);
-        console.log(`Parsed ${arrayResult.length} items successfully.`);
-        return arrayResult;
+        
+        // Post-processing to ensure tags are unique and lowercase
+        return arrayResult.map((item: any) => ({
+            ...item,
+            tags: Array.isArray(item.tags) ? [...new Set(item.tags.map((t: any) => String(t).toLowerCase()))] : []
+        }));
     } catch (parseError) {
         console.error("JSON Parse Error:", parseError);
         return [];
@@ -230,12 +246,11 @@ const parseResponse = (jsonStr: string): any[] => {
 
 const processChunk = async (
   bookmarksChunk: { id: string; title: string; url: string }[],
-  existingCategories: string[],
   signal?: AbortSignal
-): Promise<{ id: string; category: string }[]> => {
+): Promise<{ id: string; category: string; tags: string[] }[]> => {
     const settings = getAISettings();
     const { provider } = settings;
-    const userPrompt = generateUserPrompt(bookmarksChunk, existingCategories);
+    const userPrompt = JSON.stringify(bookmarksChunk);
 
     let jsonStr = '';
 
@@ -260,9 +275,10 @@ const processChunk = async (
                 type: Type.OBJECT,
                 properties: {
                   id: { type: Type.STRING },
-                  category: { type: Type.STRING }
+                  category: { type: Type.STRING },
+                  tags: { type: Type.ARRAY, items: { type: Type.STRING } }
                 },
-                required: ["id", "category"]
+                required: ["id", "category", "tags"]
               }
             }
           },
@@ -290,8 +306,6 @@ const processChunk = async (
              
              const headers: any = {
                 "Content-Type": "application/json",
-                // Origin and Referer are often stripped by Electron main process to bypass CORS,
-                // but Auth headers must be preserved.
              };
 
              if (apiKey) {
@@ -324,7 +338,6 @@ const processChunk = async (
             response = await doFetch(baseUrl);
         } catch (e: any) {
              // Auto-retry with 127.0.0.1 if localhost fails (common IPv6 issue)
-             // Only retry if it looks like a network connection error
              if (baseUrl.includes('localhost') && (e.message.includes('fetch') || e.message.includes('failed'))) {
                  console.warn("Ollama connection failed on localhost, retrying with 127.0.0.1...");
                  baseUrl = baseUrl.replace('localhost', '127.0.0.1');
@@ -365,7 +378,6 @@ const processChunk = async (
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             const backendError = errorData.error?.message;
-            // Throw a detailed error including status to help the retry logic
             throw new Error(backendError || `Provider returned error: ${response.status} ${response.statusText}`);
         }
 

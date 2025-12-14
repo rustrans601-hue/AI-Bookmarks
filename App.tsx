@@ -109,18 +109,18 @@ const App: React.FC = () => {
   // --- Derived State: Dynamic Categories ---
   const availableCategories = useMemo(() => {
     // Get all unique categories from current bookmarks
-    const categoriesSet = new Set(bookmarks.map(b => b.category));
+    const categoriesSet = new Set<string>(bookmarks.map(b => b.category));
     
-    if (bookmarks.length === 0) {
-        return DEFAULT_CATEGORIES;
-    }
+    // Always include DEFAULT_CATEGORIES in the UI options
+    DEFAULT_CATEGORIES.forEach(c => categoriesSet.add(c));
     
-    const cats = Array.from(categoriesSet);
-    return cats.sort((a: string, b: string) => {
-        if (a === 'Uncategorized') return 1;
-        if (b === 'Uncategorized') return -1;
-        return a.localeCompare(b);
-    });
+    // Remove "Uncategorized" temporarily for sorting
+    categoriesSet.delete('Uncategorized');
+    
+    const cats = Array.from(categoriesSet).sort((a, b) => a.localeCompare(b));
+    
+    // Add "Uncategorized" at the end if it exists in bookmarks or just as a fallback
+    return [...cats, 'Uncategorized'];
   }, [bookmarks]);
 
   // --- Actions ---
@@ -220,14 +220,23 @@ const App: React.FC = () => {
     if (isAnalyzing) return;
 
     // 1. Identify bookmarks that need organization
+    // Strategy: Prioritize Uncategorized, but if user is in "All" and clicks, maybe they want to re-sort everything?
+    // For safety, let's target 'Uncategorized' and 'Other' first.
+    // However, the new prompt is strict, so we might want to allow re-organizing everything eventually.
+    // For now, let's stick to items that match specific criteria or are Uncategorized.
+    
     const targets = bookmarks.filter(b => 
-        ['Uncategorized', 'Other', 'Без категории'].includes(b.category)
+        ['Uncategorized', 'Other', 'Без категории'].includes(b.category) || 
+        !b.category // handle legacy empty categories
     );
 
     if (targets.length === 0) {
-        alert("No uncategorized bookmarks found to organize.");
-        return;
+        if (!window.confirm("No 'Uncategorized' bookmarks found. Do you want to re-organize ALL bookmarks using the new category system?")) {
+            return;
+        }
     }
+
+    const finalTargets = targets.length > 0 ? targets : bookmarks;
 
     setIsAnalyzing(true);
     
@@ -236,27 +245,28 @@ const App: React.FC = () => {
     abortControllerRef.current = controller;
     
     // 2. Prepare payload for AI
-    const payload = targets.map(b => ({
+    const payload = finalTargets.map(b => ({
         id: b.id,
         title: b.title,
         url: b.url
     }));
 
-    // 3. Get existing categories
-    const existingCats = availableCategories.filter(c => 
-        !['Uncategorized', 'Other', 'Без категории'].includes(c)
-    );
+    // 3. (Categories are now strict/hardcoded in the AI service, so we don't need to pass existing ones)
 
     try {
         // 4. Call Batch API with Signal
-        const results = await organizeBookmarksBatch(payload, existingCats, controller.signal);
+        const results = await organizeBookmarksBatch(payload, [], controller.signal);
 
-        // 5. Update State
+        // 5. Update State with Category AND Tags
         if (results.length > 0) {
             const newBookmarks = bookmarks.map(b => {
                 const match = results.find(r => r.id === b.id);
                 if (match) {
-                    return { ...b, category: match.category };
+                    return { 
+                        ...b, 
+                        category: match.category,
+                        tags: match.tags || [] // Apply AI generated tags
+                    };
                 }
                 return b;
             });
