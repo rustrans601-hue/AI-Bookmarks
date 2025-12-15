@@ -27,7 +27,7 @@ A smart, modern bookmark manager that uses AI (Google Gemini, OpenRouter, or loc
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/ai-bookmark-manager.git
+   git clone https://github.com/rustrans601-hue/ai-bookmark-manager.git
    cd ai-bookmark-manager
    ```
 
